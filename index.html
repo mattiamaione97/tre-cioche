@@ -1045,7 +1045,13 @@ function optimizePlan(){
     if(!g.musicReq){const priority=t=>t.item.musicZone==='far'?0:t.item.musicZone==='middle'?1:t.item.musicZone==='near'?2:3;
      if(priority(a)!==priority(b))return priority(a)-priority(b)}
     const af=a.used>0?1:0,bf=b.used>0?1:0;if(af!==bf)return bf-af;
-    return (a.cap-a.used-g.size)-(b.cap-b.used-g.size)
+    // V25.49: preferenza MORBIDA per tavolate con meno prenotazioni distinte.
+    // Il margine di 2 posti mantiene prioritario il riempimento: non e' un limite.
+    const wasteA=a.cap-a.used-g.size,wasteB=b.cap-b.used-g.size;
+    if(Math.abs(wasteA-wasteB)>2)return wasteA-wasteB;
+    const serviceA=a.bs.length,serviceB=b.bs.length;
+    if(serviceA!==serviceB)return serviceA-serviceB;
+    return wasteA-wasteB
    });
   if(!choices.length){const compatible=tables.filter(t=>!g.musicReq||t.item.musicZone===g.musicReq);problems.push('⛔ '+g.bs.map(b=>b.name).join(' + ')+' ('+g.size+'): '+(g.musicReq?'nessuna tavolata disponibile classificata «'+musicLabel(g.musicReq)+'»':'nessuna tavolata con capienza sufficiente')+'. NON ASSEGNATA.');continue}
   const t=choices[0];t.used+=g.size;t.bs.push(...g.bs);for(const b of g.bs)assignments.set(b.id,t.id);
@@ -1188,7 +1194,12 @@ function recalculatePlan(){
   const choices=tables.filter(t=>!t.item.locked&&t.used+g.size<=t.cap&&(!g.required.length||t.item.musicZone===g.required[0]));
   choices.sort((a,b)=>{
    const score=t=>{const staying=g.bs.filter(x=>x.tableId===t.id).reduce((n,x)=>n+x.people,0);return (t.used>0?200:0)+staying*12-(t.cap-t.used-g.size)*.25};
-   return score(b)-score(a)
+   const sa=score(a),sb=score(b);
+   // La continuita' delle assegnazioni e la capienza rimangono prioritarie.
+   // Solo per alternative vicine, preferisci meno prenotazioni sulla tavolata.
+   if(Math.abs(sa-sb)>1)return sb-sa;
+   if(a.bs.length!==b.bs.length)return a.bs.length-b.bs.length;
+   return sb-sa
   });
   if(!choices.length){g.blocked=true;problems.push('⛔ '+g.bs.map(b=>b.name).join(' + ')+' ('+g.size+'): nessuna tavolata disponibile'+(g.required.length?' nella zona «'+musicLabel(g.required[0])+'»':'')+'. Gruppo non assegnato.');continue}
   const t=choices[0];t.used+=g.size;t.bs.push(...g.bs);for(const b of g.bs)assignments.set(b.id,t.id);
