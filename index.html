@@ -347,32 +347,24 @@ function notice(s){$('toast').textContent=s;setTimeout(()=>{$('toast').textConte
 function mapPad(z){const c=$('canvas'),f=fitViewInfo();return {x:Math.max(0,c.clientWidth/2-f.x*z),y:Math.max(0,c.clientHeight/2-f.y*z)}}
 function draw(){menus();const c=$('canvas');const savedScrollX=c.scrollLeft,savedScrollY=c.scrollTop;c.replaceChildren();const world=document.createElement('div');world.className='world';world.id='world';world.style.transform='scale('+zoom+')';world.style.width=Math.max(WORLD_W,Math.ceil(c.clientWidth/zoom))+'px';world.style.height=Math.max(WORLD_H,Math.ceil(c.clientHeight/zoom))+'px';const holder=document.createElement('div');const padding=mapPad(zoom),padX=padding.x,padY=padding.y;holder.style.width=Math.max(WORLD_W*zoom,c.clientWidth-padX)+'px';holder.style.height=Math.max(WORLD_H*zoom,c.clientHeight-padY)+'px';holder.style.paddingLeft=padX+'px';holder.style.paddingTop=padY+'px';holder.append(world);c.append(holder);$('zoomValue').value=Math.round(zoom*100);let nt=0,base=0,extra=0;for(const it of items()){const el=document.createElement('div');el.dataset.id=it.id;el.className=(it.kind==='table'?'table':'object '+(it.kind==='stage'?'stageobj':it.kind==='bathroom'?'bathroomobj':it.kind==='kitchen'?'kitchenobj':it.kind==='bar'?'barobj':''))+(it.id===selected?' selected':'')+(it.locked?' locked':'');if(it.kind==='table'){el.style.borderColor='#2563eb';el.title='Tavolata '+it.name+' · zona musica: '+musicLabel(it.musicZone)}el.style.left=it.x+'px';el.style.top=it.y+'px';el.style.width=it.w+'px';el.style.height=it.h+'px';el.style.transform='rotate('+clamp(it.angle??(it.orientation==='vertical'?90:0),-180,180)+'deg)';el.style.transformOrigin='center center';if(it.kind==='table'){nt++;base+=it.base;extra+=(it.ends||[]).filter(v=>v==='seat').length;const capacity=it.base+(it.ends||[]).filter(v=>v==='seat').length;
 const tableBookings=bookings().filter(b=>b.tableId===it.id&&(b.status==='active'||b.status==='done'));
-// V25.40: coordinate fisiche persistenti. Le prenotazioni nuove riempiono i vuoti
-// senza spostare le porzioni gia' occupate; gli ex ospiti non riservano spazio.
-const seated=tableBookings.some(b=>Number.isFinite(b.mapPosition))
- ? [...tableBookings].sort((a,b)=>(a.mapPosition??999999)-(b.mapPosition??999999))
- : orderAdjacentBookings(tableBookings);
+// V25.41: posizioni fisiche persistenti, incluse le zone liberate.
+// Le prenotazioni "andati via" conservano la loro posizione storica ma non occupano posti.
+const seated=orderAdjacentBookings(tableBookings);
 let slotChanged=false;
 const placed=[];
 const canPlace=(start,length)=>start>=0&&start+length<=capacity&&placed.every(p=>start+length<=p.start||start>=p.end);
 const findSpace=length=>{for(let pos=0;pos+length<=capacity;pos++){if(canPlace(pos,length))return pos}return -1};
-// I vecchi mapPosition erano indici d'ordine, non coordinate in posti.
-// Convertili solo alla prima introduzione del nuovo sistema.
-let legacyCursor=0;
+// Prima conserva le coordinate dei gruppi attivi; le prenotazioni terminate non sono ostacoli.
 for(const b of seated){
  const n=Math.max(0,Number(b.people)||0);
- if(b.status==='active'&&b.mapSeatTableId===it.id&&Number.isFinite(b.mapSeatStart)&&canPlace(b.mapSeatStart,n)){
-  placed.push({start:b.mapSeatStart,end:b.mapSeatStart+n,b});
- }
- legacyCursor+=n;
+ if(b.status==='active'&&b.mapSeatTableId===it.id&&Number.isFinite(b.mapSeatStart)&&canPlace(b.mapSeatStart,n))placed.push({start:b.mapSeatStart,end:b.mapSeatStart+n,b});
 }
-// Se il tavolo non ha ancora coordinate fisiche, conserva l'ordine precedente.
+// Inizializzazione per i vecchi dati, senza alterare gli slot già validi.
 let initialCursor=0;
 for(const b of seated){
  const n=Math.max(0,Number(b.people)||0);
  if(b.status==='active'&&!placed.some(p=>p.b===b)){
-  let start=-1;
-  if(!seated.some(x=>x.mapSeatTableId===it.id&&Number.isFinite(x.mapSeatStart))){start=initialCursor;}
+  let start=Number.isFinite(b.mapSeatStart)&&b.mapSeatTableId===it.id?b.mapSeatStart:initialCursor;
   if(!canPlace(start,n))start=findSpace(n);
   if(start>=0){placed.push({start,end:start+n,b});b.mapSeatStart=start;b.mapSeatTableId=it.id;slotChanged=true}
  }
@@ -395,11 +387,11 @@ const strip=document.createElement('div');strip.className='seatsegments';
 let cursor=0;
 const visibleSlots=[];
 for(const p of placed){
- if(p.start>cursor)visibleSlots.push({kind:'free',people:p.start-cursor});
+ if(p.start>cursor)visibleSlots.push({kind:'free',people:p.start-cursor,start:cursor});
  visibleSlots.push({kind:'booking',people:p.end-p.start,b:p.b});
  cursor=p.end;
 }
-if(cursor<capacity)visibleSlots.push({kind:'free',people:capacity-cursor});
+if(cursor<capacity)visibleSlots.push({kind:'free',people:capacity-cursor,start:cursor});
 for(const slot of visibleSlots){
  const b=slot.b;
  const isFree=slot.kind==='free';
@@ -416,7 +408,7 @@ for(const slot of visibleSlots){
  segment.addEventListener('pointerdown',ev=>ev.stopPropagation());
  segment.addEventListener('pointerup',ev=>ev.stopPropagation());
  segment.addEventListener('pointercancel',ev=>ev.stopPropagation());
- segment.addEventListener('click',ev=>{ev.stopPropagation();if(isFree){openWalkinModal(it.id);return}selectedBooking=b.id;selected=it.id;draw();showBookingQuickCard(b.id)});
+ segment.addEventListener('click',ev=>{ev.stopPropagation();if(isFree){openWalkinModal(it.id,slot.start,slot.people);return}selectedBooking=b.id;selected=it.id;draw();showBookingQuickCard(b.id)});
  segment.addEventListener('contextmenu',ev=>{ev.preventDefault();ev.stopPropagation();selected=it.id;selectedBooking=null;setCreationOpen(true);draw();if(document.body.classList.contains('ipad-mode'))ipadOpen('table');else $('editor').scrollIntoView({behavior:'smooth',block:'nearest'})});
  strip.append(segment);
 }
@@ -1159,13 +1151,14 @@ $('recalculate').onclick=showRecalculation;
 
 
 // V25.11 — inserimento rapido di clienti arrivati senza prenotazione.
-let walkinTableId=null;
-function closeWalkinModal(){walkinTableId=null;$('walkinModal').classList.add('hidden');$('walkinError').textContent='';}
-function openWalkinModal(tableId){
+let walkinTableId=null,walkinSlotStart=null,walkinSlotCapacity=null;
+function closeWalkinModal(){walkinTableId=null;walkinSlotStart=null;walkinSlotCapacity=null;$('walkinModal').classList.add('hidden');$('walkinError').textContent='';}
+function openWalkinModal(tableId,slotStart=null,slotCapacity=null){
  const t=allTables().find(x=>x.item.id===tableId);if(!t)return;
  const cap=t.item.base+(t.item.ends||[]).filter(x=>x==='seat').length;
  const used=bookings().filter(b=>b.status==='active'&&b.tableId===tableId).reduce((n,b)=>n+Number(b.people||0),0);
- const available=cap-used;if(available<=0)return;
+ const available=Math.min(cap-used,Number.isFinite(slotCapacity)?slotCapacity:cap-used);if(available<=0)return;
+ walkinSlotStart=slotStart;walkinSlotCapacity=slotCapacity;
  walkinTableId=tableId;$('walkinForm').reset();$('walkinPeople').value=available;
  $('walkinPeople').max=available;$('walkinTableInfo').textContent='Tavolo '+t.item.name+' · '+available+' posti disponibili';
  $('walkinError').textContent='';updateWalkinStepper();$('walkinModal').classList.remove('hidden');
@@ -1194,10 +1187,11 @@ $('walkinForm').addEventListener('submit',e=>{
  const name=$('walkinName').value.trim(),people=Number($('walkinPeople').value);
  const cap=t.item.base+(t.item.ends||[]).filter(x=>x==='seat').length;
  const used=bookings().filter(b=>b.status==='active'&&b.tableId===tableId).reduce((n,b)=>n+Number(b.people||0),0);
- const available=cap-used;
+ const available=Math.min(cap-used,Number.isFinite(walkinSlotCapacity)?walkinSlotCapacity:cap-used);
  if(!name){$('walkinError').textContent='Inserisci il nome del cliente.';return}
  if(!Number.isInteger(people)||people<1||people>available){$('walkinError').textContent='Inserisci da 1 a '+available+' persone.';return}
  const b={id:uid(),name,people,comment:'',status:'active',tableId,seated:true,pinned:false};
+ if(Number.isFinite(walkinSlotStart)){b.mapSeatStart=walkinSlotStart;b.mapSeatTableId=tableId;}
  bookings().push(b);selectedBooking=null;selected=null;save();closeWalkinModal();draw();notice(name+' · '+people+' persone inserite al tavolo '+t.item.name);
 });
 // V22 — gestione diretta dalla piantina, senza cambiare gli algoritmi di assegnazione.
