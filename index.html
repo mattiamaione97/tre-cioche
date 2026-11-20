@@ -199,6 +199,27 @@ body.ipad-mode{height:100dvh;overflow:hidden;background:#f8fbff}
   animation:none!important;
   z-index:3;
 }
+/* V25.12 — proprietà tavolo: pannello pienamente opaco su iPad.
+   La vecchia regola #propertySidebar {background:transparent} lasciava vedere la mappa. */
+.ipad-mode.ipad-table #propertySidebar{
+ display:block!important;position:fixed!important;
+ top:60px!important;left:0!important;right:0!important;bottom:0!important;
+ transform:none!important;width:100vw!important;max-width:none!important;
+ height:auto!important;max-height:none!important;
+ background:#fff!important;color:#17253b!important;opacity:1!important;
+ border:0!important;border-radius:0!important;
+ padding:78px max(18px,env(safe-area-inset-right)) 30px max(18px,env(safe-area-inset-left))!important;
+ overflow-y:auto!important;overflow-x:hidden!important;
+ -webkit-overflow-scrolling:touch;box-shadow:none!important;
+ isolation:isolate!important;z-index:2050!important;
+}
+.ipad-mode.ipad-table #propertySidebar .editgrid,
+.ipad-mode.ipad-table #propertySidebar #editor{background:#fff!important}
+.ipad-mode.ipad-table #ipadTableHead{
+ display:flex!important;position:fixed!important;top:60px!important;
+ left:0!important;right:0!important;width:100vw!important;
+ transform:none!important;z-index:2051!important;background:#fff!important;
+}
 </style><style>
 /* V25.10 — due viste per le proposte di cambio posto */
 #capacityModal .move-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 12px}#capacityModal .move-tabs button{flex:1 1 180px;min-height:44px;border:2px solid #cbd5e1;background:#f8fafc;color:#1e293b;font-weight:700;border-radius:9px}#capacityModal .move-tabs button.active{background:#fef08a;border-color:#eab308;color:#713f12}#capacityModal .move-table-section{padding:10px 12px;margin:12px 0;border:2px solid #fde047;border-radius:12px;background:#fffbeb}#capacityModal .move-table-section h3{margin:2px 0 10px;color:#854d0e}#capacityModal .move-table-section .choice{background:white}#capacityModal .dialog{width:min(780px,96vw)}
