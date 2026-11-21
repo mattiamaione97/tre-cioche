@@ -230,7 +230,7 @@ body.ipad-mode{height:100dvh;overflow:hidden;background:#f8fbff}
 .ipad-mode.ipad-table #ipadShade{display:block!important;pointer-events:auto!important;z-index:55!important}
 .ipad-mode.ipad-table #ipadShade.hidden{display:none!important}
 
-/* V25.53: mappa fisica a due lati; i confini sono a gradino. */
+/* V25.54: mappa fisica a due lati; i confini sono a gradino. */
 .table .seatsegments.physical-seats{display:block!important;overflow:hidden!important;background:#e2e8f0!important}
 .table .physical-seats svg{width:100%;height:100%;display:block;overflow:hidden}
 .table .physical-seats .seat-physical-piece{cursor:pointer;stroke:#26374e;stroke-width:.7;vector-effect:non-scaling-stroke}
@@ -426,49 +426,72 @@ function compactMapSeatsAfterCalculation(){
    for(const x of sorted){const gap=x.start-cursor;if(gap>0){runs++;biggest=Math.max(biggest,gap);squares+=gap*gap}cursor=x.end}
    const gap=cap-cursor;if(gap>0){runs++;biggest=Math.max(biggest,gap);squares+=gap*gap}
    let displacement=0;for(const b of movable){const old=b.mapSeatTableId===it.id&&Number.isFinite(b.mapSeatStart)?b.mapSeatStart:result.get(b.id);displacement+=Math.abs(result.get(b.id)-old)}
-   return {result,runs,biggest,squares,displacement};
+   const geometry=geometryScoreForBlocks(sorted,it,cap);
+   return {result,runs,biggest,squares,displacement,geometryValid:geometry.valid,geometryCost:geometry.cost||0};
   };
   const candidates=[];
   const variants=[original,original.slice().reverse(),original.slice().sort((a,b)=>Number(b.people)-Number(a.people)),original.slice().sort((a,b)=>Number(a.people)-Number(b.people)),original.slice().sort((a,b)=>(Number(a.people)%2)-(Number(b.people)%2)||Number(b.people)-Number(a.people)),original.slice().sort((a,b)=>(Number(b.people)%2)-(Number(a.people)%2)||Number(b.people)-Number(a.people))];
   for(const order of variants)for(const right of [false,true]){const c=evaluate(order,right);if(c)candidates.push(c)}
-  candidates.sort((a,b)=>a.runs-b.runs||b.biggest-a.biggest||b.squares-a.squares||a.displacement-b.displacement);
-  if(candidates.length){for(const b of movable){b.mapSeatStart=candidates[0].result.get(b.id);b.mapSeatTableId=it.id}}
+  candidates.sort((a,b)=>Number(b.geometryValid)-Number(a.geometryValid)||a.runs-b.runs||a.geometryCost-b.geometryCost||b.biggest-a.biggest||b.squares-a.squares||a.displacement-b.displacement);
+  if(candidates.length&&candidates[0].geometryValid){for(const b of movable){b.mapSeatStart=candidates[0].result.get(b.id);b.mapSeatTableId=it.id}}
+  else if(active.length&&!it.locked){console.warn("Tavolo "+it.name+": nessuna disposizione frontale valida senza spostare prenotazioni protette.") }
  }
 }
-// V25.53: costruisce una vera rappresentazione di 2 file longitudinali.
+// V25.54: costruisce una vera rappresentazione di 2 file longitudinali.
 // Il numero di posti di ogni prenotazione viene ripartito fra i due lati;
 // un eventuale posto dispari produce un divisore a gradino (zigzag).
 // I capotavola, quando attivi, sono posti alle estremita' sinistra/destra.
+// V25.54: geometria condivisa da ottimizzazione e mappa.
+// Ogni gruppo ha coppie frontali obbligatorie e, se dispari, un solo
+// posto laterale aggiuntivo. I capotavola sono soltanto a SINISTRA/DESTRA.
 function physicalSeatLayout(slots,it){
  const left=(it.ends||[])[0]==='seat',right=(it.ends||[])[1]==='seat';
- const sideCap=Math.max(0,Number(it.base)||0),columns=Math.floor(sideCap/2);
- const groups=slots.map(s=>({slot:s,people:s.people,top:0,bottom:0,leftCap:0,rightCap:0}));
- if(!groups.length)return {groups,columns,left,right};
- // Capotavola: appartengono alle porzioni agli estremi della tavolata.
- if(left&&groups[0].people){groups[0].leftCap=1;groups[0].people--}
- if(right){const last=groups[groups.length-1];if(last.people){last.rightCap=1;last.people--}}
- // Ripartizione bilanciata: ciascun gruppo pari ha meta' sopra e meta' sotto,
- // salvo i casi in cui un capotavola cambia la parita' della parte laterale.
- // Per le porzioni dispari scegliamo il lato che riporta le due file in pari.
- let imbalance=0;
+ const columns=Math.floor(Math.max(0,Number(it.base)||0)/2);
+ const groups=slots.filter(s=>s.people>0).map(s=>({slot:s,people:s.people,top:0,bottom:0,leftCap:0,rightCap:0}));
+ if(!groups.length)return {groups,columns,left,right,top:0,bottom:0,valid:true};
+ // L'eventuale capotavola appartiene esclusivamente al gruppo all'estremita'.
+ if(left){groups[0].leftCap=1;groups[0].people--}
+ if(right){const last=groups[groups.length-1];last.rightCap=1;last.people--}
+ if(groups.some(g=>g.people<0))return {groups,columns,left,right,valid:false};
+ // Programmazione dinamica: ogni prenotazione deve avere floor(n/2)
+ // coppie frontali, piu' un solo posto extra se dispari.
+ // I posti liberi possono invece occupare liberamente i due lati.
+ let states=new Map([[0,{cost:0,path:[]}]]);
  for(const g of groups){
-  const half=Math.floor(g.people/2);
-  g.top=half;g.bottom=half;
-  if(g.people%2){if(imbalance>0){g.bottom++ ;imbalance--}else{g.top++;imbalance++}}
+  const next=new Map(),free=g.slot.kind==='free',n=g.people;
+  const choices=[];
+  if(free){for(let top=0;top<=n;top++)choices.push([top,n-top])}
+  else {const half=Math.floor(n/2);choices.push([half+(n%2),half]);if(n%2)choices.push([half,half+1])}
+  for(const [delta,st] of states)for(const [top,bottom] of choices){
+   const t=st.path.reduce((v,x)=>v+x[0],0)+top;
+   const b=st.path.reduce((v,x)=>v+x[1],0)+bottom;
+   if(t>columns||b>columns)continue;
+   const imbalance=t-b;
+   // Premia i confini allineati e le coppie dispari che si compensano.
+   const cost=st.cost+Math.abs(imbalance)*2+(free?Math.abs(top-bottom)*.1:0);
+   const prev=next.get(imbalance);
+   if(!prev||cost<prev.cost)next.set(imbalance,{cost,path:[...st.path,[top,bottom]]});
+  }
+  states=next;
+  if(!states.size)break;
  }
- // Se un capotavola lascia un residuo, compensiamo scegliendo l'altro lato
- // per una porzione dispari, senza mai cambiare il totale delle persone.
- let top=groups.reduce((n,g)=>n+g.top,0),bottom=groups.reduce((n,g)=>n+g.bottom,0);
- for(const g of groups){
-  if(top===columns&&bottom===columns)break;
-  if(top>columns&&g.top>g.bottom){g.top--;g.bottom++;top--;bottom++}
-  else if(bottom>columns&&g.bottom>g.top){g.bottom--;g.top++;bottom--;top++}
- }
- return {groups,columns,left,right,top,bottom};
+ const solution=states.get(0);
+ if(!solution)return {groups,columns,left,right,valid:false};
+ groups.forEach((g,i)=>{g.top=solution.path[i][0];g.bottom=solution.path[i][1]});
+ return {groups,columns,left,right,top:columns,bottom:columns,valid:true,cost:solution.cost};
 }
+function geometryScoreForBlocks(blocks,it,capacity){
+ const sorted=blocks.slice().sort((a,b)=>a.start-b.start);
+ const slots=[];let cursor=0;
+ for(const x of sorted){if(x.start>cursor)slots.push({kind:'free',people:x.start-cursor,start:cursor});slots.push({kind:'booking',people:x.end-x.start,b:x.b});cursor=x.end}
+ if(cursor<capacity)slots.push({kind:'free',people:capacity-cursor,start:cursor});
+ return physicalSeatLayout(slots,it);
+}
+
 function renderPhysicalSeatStrip(strip,it,slots,capacity){
  strip.classList.add('physical-seats');
  const layout=physicalSeatLayout(slots,it),{groups,columns}=layout;
+ if(!layout.valid){strip.classList.remove('physical-seats');return}
  if(!columns){strip.textContent='';return}
  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
  const W=1000,H=100,capWidth=layout.left||layout.right?24:0;
@@ -563,7 +586,7 @@ for(const p of placed){
  cursor=p.end;
 }
 if(cursor<capacity)visibleSlots.push({kind:'free',people:capacity-cursor,start:cursor});
-// V25.53: rappresentazione fisica sui due lati, con confini a gradino.
+// V25.54: rappresentazione fisica sui due lati, con confini a gradino.
 // Le porzioni SVG sono cliccabili anche dove il confine e' sfalsato.
 renderPhysicalSeatStrip(strip,it,visibleSlots,capacity);
 if(slotChanged)save();
