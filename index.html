@@ -525,19 +525,47 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
    cap.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();activate(ev)}});
   }
   if(i<groups.length-1)boundaries.push({top:xTop2,bottom:xBottom2});
-  // Testo HTML sovrapposto: mantiene la dimensione reale in pixel, anziche'
-  // essere rimpicciolito dal viewBox SVG di 1000 unita'.
-  const leftX=Math.min(xTop1,xBottom1),rightX=Math.max(xTop2,xBottom2);
-  const center=(xTop1+xTop2+xBottom1+xBottom2)/4;
-  const pxWidth=(rightX-leftX)/W*Math.max(1,Number(it.w)||300);
-  const label=document.createElement('div');label.className='physical-booking-label';
-  label.style.left=(center/W*100)+'%';
-  label.style.width=Math.max(0,Math.min(100,(rightX-leftX)/W*100))+'%';
-  label.style.fontSize=(pxWidth>=72?12:pxWidth>=46?11:pxWidth>=27?10:9)+'px';
-  const name=document.createElement('span');name.className='physical-booking-name';name.textContent=free?'LIBERO':b.name;
-  const count=document.createElement('span');count.className='physical-booking-count';count.textContent=free?slot.people+' liberi':String(slot.people);
-  label.append(name,count);label.title=(free?'Posti liberi':b.name)+' · '+slot.people;
-  strip.append(label);
+  // V25.56: nelle porzioni sfalsate il nome va sul lato piu' lungo,
+  // il numero sul lato piu' corto. Nelle porzioni simmetriche rimane
+  // la classica etichetta centrata, senza duplicare informazioni.
+  const topLen=xTop2-xTop1,bottomLen=xBottom2-xBottom1;
+  const isStaggered=Math.abs(topLen-bottomLen)>unit*.2 && topLen>0 && bottomLen>0;
+  const pxScale=Math.max(1,Number(it.w)||300)/W;
+  const addText=(value,x1,x2,y,kind)=>{
+   if(x2-x1<.01)return;
+   const label=document.createElement('div');
+   label.className='physical-booking-label physical-'+kind;
+   label.style.left=(((x1+x2)/2)/W*100)+'%';
+   label.style.top=y+'%';
+   label.style.width=((x2-x1)/W*100)+'%';
+   const pxWidth=(x2-x1)*pxScale;
+   label.style.fontSize=(pxWidth>=72?12:pxWidth>=46?11:pxWidth>=27?10:9)+'px';
+   const text=document.createElement('span');
+   text.className=kind==='name'?'physical-booking-name':'physical-booking-count';
+   text.textContent=value;
+   label.append(text);
+   label.title=(free?'Posti liberi':b.name)+' · '+slot.people;
+   strip.append(label);
+  };
+  if(isStaggered){
+   const topLonger=topLen>bottomLen;
+   const longX1=topLonger?xTop1:xBottom1,longX2=topLonger?xTop2:xBottom2;
+   const shortX1=topLonger?xBottom1:xTop1,shortX2=topLonger?xBottom2:xTop2;
+   addText(free?'LIBERO':b.name,longX1,longX2,topLonger?25:75,'name');
+   addText(free?String(slot.people):String(slot.people),shortX1,shortX2,topLonger?75:25,'count');
+  }else{
+   const leftX=Math.min(xTop1,xBottom1),rightX=Math.max(xTop2,xBottom2);
+   const center=(xTop1+xTop2+xBottom1+xBottom2)/4;
+   const pxWidth=(rightX-leftX)*pxScale;
+   const label=document.createElement('div');label.className='physical-booking-label';
+   label.style.left=(center/W*100)+'%';
+   label.style.width=Math.max(0,Math.min(100,(rightX-leftX)/W*100))+'%';
+   label.style.fontSize=(pxWidth>=72?12:pxWidth>=46?11:pxWidth>=27?10:9)+'px';
+   const name=document.createElement('span');name.className='physical-booking-name';name.textContent=free?'LIBERO':b.name;
+   const count=document.createElement('span');count.className='physical-booking-count';count.textContent=free?slot.people+' liberi':String(slot.people);
+   label.append(name,count);label.title=(free?'Posti liberi':b.name)+' · '+slot.people;
+   strip.append(label);
+  }
  });
  // Solo un divisore per confine. Quando i due lati non coincidono,
  // la linea fa un unico gradino centrale, senza diagonali o incroci.
