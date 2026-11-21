@@ -243,6 +243,10 @@ body.ipad-mode{height:100dvh;overflow:hidden;background:#f8fbff}
 .table .physical-seats .seat-physical-piece:focus{outline:none;stroke:#2563eb;stroke-width:2.5}
 .table .physical-seats .seat-physical-text{font-weight:750;fill:#17253b;text-anchor:middle;pointer-events:none;dominant-baseline:middle}
 .table .physical-seats .seat-physical-count{font-weight:700;fill:#17253b;text-anchor:middle;pointer-events:none;dominant-baseline:middle}
+
+/* V25.59: evidenzia soltanto la prenotazione selezionata, non l'intera tavolata. */
+.table .physical-seats .physical-focus-label{color:#422006!important;z-index:4!important}
+.table .physical-seats svg rect[stroke="#f97316"]{filter:drop-shadow(0 0 1px #f97316)}
 </style><style>
 /* V25.10 — due viste per le proposte di cambio posto */
 #capacityModal .move-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 12px}#capacityModal .move-tabs button{flex:1 1 180px;min-height:44px;border:2px solid #cbd5e1;background:#f8fafc;color:#1e293b;font-weight:700;border-radius:9px}#capacityModal .move-tabs button.active{background:#fef08a;border-color:#eab308;color:#713f12}#capacityModal .move-table-section{padding:10px 12px;margin:12px 0;border:2px solid #fde047;border-radius:12px;background:#fffbeb}#capacityModal .move-table-section h3{margin:2px 0 10px;color:#854d0e}#capacityModal .move-table-section .choice{background:white}#capacityModal .dialog{width:min(780px,96vw)}
@@ -418,7 +422,7 @@ function compactMapSeatsAfterCalculation(){
     if(cap-cursor>=n)gaps.push({start:cursor,end:cap});
     if(!gaps.length)return null;
     // Preferisci completare un intervallo gia' piccolo anziche' frammentare gli altri.
-    gaps.sort((a,c)=>(a.end-a.start)-(c.end-c.start)|| (fromRight?c.start-a.start:a.start-c.start));
+    gaps.sort((a,c)=>(fromRight?c.start-a.start:a.start-c.start)||(a.end-a.start)-(c.end-c.start));
     let start=-1;
     for(const g of gaps){
      const choices=[];
@@ -621,17 +625,18 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
   const xTop1=margin+upper*unit,xTop2=margin+(upper+g.top)*unit;
   const xBottom1=margin+lower*unit,xBottom2=margin+(lower+g.bottom)*unit;
   upper+=g.top;lower+=g.bottom;
-  const fill=free?'#dcfce7':b.seated?'#fee2e2':'#ffedd5';
+  const focused=!free&&selectedBooking===b.id;
+  const fill=focused?'#ffeb00':free?'#dcfce7':b.seated?'#fee2e2':'#ffedd5';
   const activate=ev=>{ev.stopPropagation();if(free){openWalkinModal(it.id,slot.start,slot.people);return}selectedBooking=b.id;selected=it.id;draw();showBookingQuickCard(b.id)};
   // Due rettangoli, uno per lato: nessun poligono autointersecante.
   const rects=[];
   if(g.top)rects.push(make('rect',{x:xTop1,y:0,width:xTop2-xTop1,height:50,fill,tabindex:0,'aria-label':free?slot.people+' posti liberi':b.name+', '+slot.people+' persone'}));
   if(g.bottom)rects.push(make('rect',{x:xBottom1,y:50,width:xBottom2-xBottom1,height:50,fill,tabindex:0,'aria-label':free?slot.people+' posti liberi':b.name+', '+slot.people+' persone'}));
-  for(const r of rects){r.style.cursor='pointer';r.addEventListener('pointerdown',ev=>ev.stopPropagation());r.addEventListener('pointerup',ev=>ev.stopPropagation());r.addEventListener('click',activate);r.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();activate(ev)}})}
+  for(const r of rects){if(focused){r.setAttribute('stroke','#f97316');r.setAttribute('stroke-width','2.5');r.setAttribute('vector-effect','non-scaling-stroke')}r.style.cursor='pointer';r.addEventListener('pointerdown',ev=>ev.stopPropagation());r.addEventListener('pointerup',ev=>ev.stopPropagation());r.addEventListener('click',activate);r.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();activate(ev)}})}
   // Capotavola: sempre ai due estremi, mai sopra/sotto.
   for(const [on,atLeft] of [[g.leftCap,true],[g.rightCap,false]])if(on){
    const cap=make('rect',{x:atLeft?0:W-margin,y:12,width:margin,height:76,rx:3,fill,tabindex:0,'aria-label':free?'Capotavola libero':'Capotavola: '+b.name});
-   cap.style.cursor='pointer';cap.addEventListener('pointerdown',ev=>ev.stopPropagation());cap.addEventListener('pointerup',ev=>ev.stopPropagation());cap.addEventListener('click',activate);
+   if(focused){cap.setAttribute('stroke','#f97316');cap.setAttribute('stroke-width','2.5')}cap.style.cursor='pointer';cap.addEventListener('pointerdown',ev=>ev.stopPropagation());cap.addEventListener('pointerup',ev=>ev.stopPropagation());cap.addEventListener('click',activate);
    cap.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();activate(ev)}});
   }
   if(i<groups.length-1)boundaries.push({top:xTop2,bottom:xBottom2});
@@ -644,7 +649,7 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
   const addText=(value,x1,x2,y,kind)=>{
    if(x2-x1<.01)return;
    const label=document.createElement('div');
-   label.className='physical-booking-label physical-'+kind;
+   label.className='physical-booking-label physical-'+kind+(focused?' physical-focus-label':'');
    label.style.left=(((x1+x2)/2)/W*100)+'%';
    label.style.top=y+'%';
    label.style.width=((x2-x1)/W*100)+'%';
@@ -667,7 +672,7 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
    const leftX=Math.min(xTop1,xBottom1),rightX=Math.max(xTop2,xBottom2);
    const center=(xTop1+xTop2+xBottom1+xBottom2)/4;
    const pxWidth=(rightX-leftX)*pxScale;
-   const label=document.createElement('div');label.className='physical-booking-label';
+   const label=document.createElement('div');label.className='physical-booking-label'+(focused?' physical-focus-label':'');
    label.style.left=(center/W*100)+'%';
    label.style.width=Math.max(0,Math.min(100,(rightX-leftX)/W*100))+'%';
    label.style.fontSize=(pxWidth>=72?13:pxWidth>=46?12:11)+'px';
@@ -684,10 +689,12 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
   const d=Math.abs(x1-x2)<.1?`M ${x1} 0 V 100`:`M ${x1} 0 V 46 H ${x2} V 54 V 100`;
   make('path',{d,fill:'none',stroke:'#334155','stroke-width':1.65,'vector-effect':'non-scaling-stroke','pointer-events':'none'});
  }
+ // Bordo netto ai due estremi della superficie fisica, anche per le zone verdi.
+ make('path',{d:`M 0 0 V ${H} M ${W} 0 V ${H}`,fill:'none',stroke:'#334155','stroke-width':1.5,'vector-effect':'non-scaling-stroke','pointer-events':'none'});
  strip.prepend(svg);
 }
 
-function draw(){menus();const c=$('canvas');const savedScrollX=c.scrollLeft,savedScrollY=c.scrollTop;c.replaceChildren();const world=document.createElement('div');world.className='world';world.id='world';world.style.transform='scale('+zoom+')';world.style.width=Math.max(WORLD_W,Math.ceil(c.clientWidth/zoom))+'px';world.style.height=Math.max(WORLD_H,Math.ceil(c.clientHeight/zoom))+'px';const holder=document.createElement('div');const padding=mapPad(zoom),padX=padding.x,padY=padding.y;holder.style.width=Math.max(WORLD_W*zoom,c.clientWidth-padX)+'px';holder.style.height=Math.max(WORLD_H*zoom,c.clientHeight-padY)+'px';holder.style.paddingLeft=padX+'px';holder.style.paddingTop=padY+'px';holder.append(world);c.append(holder);$('zoomValue').value=Math.round(zoom*100);let nt=0,base=0,extra=0;for(const it of items()){const el=document.createElement('div');el.dataset.id=it.id;el.className=(it.kind==='table'?'table':'object '+(it.kind==='stage'?'stageobj':it.kind==='bathroom'?'bathroomobj':it.kind==='kitchen'?'kitchenobj':it.kind==='bar'?'barobj':''))+(it.id===selected?' selected':'')+(it.locked?' locked':'');if(it.kind==='table'){el.style.borderColor='#2563eb';el.title='Tavolata '+it.name+' · zona musica: '+musicLabel(it.musicZone)}el.style.left=it.x+'px';el.style.top=it.y+'px';el.style.width=it.w+'px';el.style.height=it.h+'px';el.style.transform='rotate('+clamp(it.angle??(it.orientation==='vertical'?90:0),-180,180)+'deg)';el.style.transformOrigin='center center';if(it.kind==='table'){nt++;base+=it.base;extra+=(it.ends||[]).filter(v=>v==='seat').length;const capacity=it.base+(it.ends||[]).filter(v=>v==='seat').length;
+function draw(){menus();const c=$('canvas');const savedScrollX=c.scrollLeft,savedScrollY=c.scrollTop;c.replaceChildren();const world=document.createElement('div');world.className='world';world.id='world';world.style.transform='scale('+zoom+')';world.style.width=Math.max(WORLD_W,Math.ceil(c.clientWidth/zoom))+'px';world.style.height=Math.max(WORLD_H,Math.ceil(c.clientHeight/zoom))+'px';const holder=document.createElement('div');const padding=mapPad(zoom),padX=padding.x,padY=padding.y;holder.style.width=Math.max(WORLD_W*zoom,c.clientWidth-padX)+'px';holder.style.height=Math.max(WORLD_H*zoom,c.clientHeight-padY)+'px';holder.style.paddingLeft=padX+'px';holder.style.paddingTop=padY+'px';holder.append(world);c.append(holder);$('zoomValue').value=Math.round(zoom*100);let nt=0,base=0,extra=0;for(const it of items()){const el=document.createElement('div');el.dataset.id=it.id;el.className=(it.kind==='table'?'table':'object '+(it.kind==='stage'?'stageobj':it.kind==='bathroom'?'bathroomobj':it.kind==='kitchen'?'kitchenobj':it.kind==='bar'?'barobj':''))+(it.id===selected&&!selectedBooking?' selected':'')+(it.locked?' locked':'');if(it.kind==='table'){el.style.borderColor='#2563eb';el.title='Tavolata '+it.name+' · zona musica: '+musicLabel(it.musicZone)}el.style.left=it.x+'px';el.style.top=it.y+'px';el.style.width=it.w+'px';el.style.height=it.h+'px';el.style.transform='rotate('+clamp(it.angle??(it.orientation==='vertical'?90:0),-180,180)+'deg)';el.style.transformOrigin='center center';if(it.kind==='table'){nt++;base+=it.base;extra+=(it.ends||[]).filter(v=>v==='seat').length;const capacity=it.base+(it.ends||[]).filter(v=>v==='seat').length;
 const tableBookings=bookings().filter(b=>b.tableId===it.id&&(b.status==='active'||b.status==='done'));
 // V25.41: posizioni fisiche persistenti, incluse le zone liberate.
 // Le prenotazioni "andati via" conservano la loro posizione storica ma non occupano posti.
