@@ -437,6 +437,11 @@ function compactMapSeatsAfterCalculation(){
   };
   const candidates=[];
   const variants=[original,original.slice().reverse(),original.slice().sort((a,b)=>Number(b.people)-Number(a.people)),original.slice().sort((a,b)=>Number(a.people)-Number(b.people)),original.slice().sort((a,b)=>(Number(a.people)%2)-(Number(b.people)%2)||Number(b.people)-Number(a.people)),original.slice().sort((a,b)=>(Number(b.people)%2)-(Number(a.people)%2)||Number(b.people)-Number(a.people))];
+  // V25.57: ulteriori ordini che raggruppano i dispari, cosi' le coppie
+  // da 2 non vengono trascinate dentro uno sfalsamento precedente.
+  const byOdd=original.slice().sort((a,b)=>(Number(b.people)%2)-(Number(a.people)%2)||Number(b.people)-Number(a.people));
+  const byEven=original.slice().sort((a,b)=>(Number(a.people)%2)-(Number(b.people)%2)||Number(b.people)-Number(a.people));
+  variants.push(byOdd,byOdd.slice().reverse(),byEven,byEven.slice().reverse());
   for(const order of variants)for(const right of [false,true]){const c=evaluate(order,right);if(c)candidates.push(c)}
   candidates.sort((a,b)=>Number(b.geometryValid)-Number(a.geometryValid)||a.runs-b.runs||a.geometryCost-b.geometryCost||b.biggest-a.biggest||b.squares-a.squares||a.displacement-b.displacement);
   if(candidates.length&&candidates[0].geometryValid){for(const b of movable){b.mapSeatStart=candidates[0].result.get(b.id);b.mapSeatTableId=it.id}}
@@ -469,6 +474,10 @@ function physicalSeatLayout(slots,it){
   if(free){for(let top=0;top<=n;top++)choices.push([top,n-top])}
   else {const half=Math.floor(n/2);choices.push([half+(n%2),half]);if(n%2)choices.push([half,half+1])}
   for(const [delta,st] of states)for(const [top,bottom] of choices){
+   // V25.57: una prenotazione pari deve iniziare con le due file allineate.
+   // Un dispari puo' aprire uno sfalsamento, che un altro dispari richiude.
+   // Per un capotavola, il conteggio laterale residuo puo' essere dispari.
+   if(!free && g.slot.people%2===0 && !g.leftCap && !g.rightCap && delta!==0)continue;
    const t=st.path.reduce((v,x)=>v+x[0],0)+top;
    const b=st.path.reduce((v,x)=>v+x[1],0)+bottom;
    if(t>columns||b>columns)continue;
@@ -497,7 +506,20 @@ function geometryScoreForBlocks(blocks,it,capacity){
 function renderPhysicalSeatStrip(strip,it,slots,capacity){
  strip.classList.add('physical-seats');
  const layout=physicalSeatLayout(slots,it),{groups,columns}=layout;
- if(!layout.valid){strip.classList.remove('physical-seats');return}
+ if(!layout.valid){
+  strip.classList.remove('physical-seats');
+  // Non mostrare una geometria inventata: torna alle porzioni semplici
+  // quando vincoli preesistenti/seduti rendono impossibile l'incastro.
+  for(const slot of slots){
+   const seg=document.createElement('div');seg.className='seatseg '+(slot.kind==='free'?'v22-free emptyseg':slot.b.seated?'v22-seated':'v22-waiting');
+   seg.style.flex=String(slot.people)+' 1 0';
+   const nm=document.createElement('span');nm.className='segname';nm.textContent=slot.kind==='free'?'LIBERO':slot.b.name;
+   const ct=document.createElement('span');ct.className='segcount';ct.textContent=String(slot.people);
+   seg.append(nm,ct);seg.addEventListener('click',ev=>{ev.stopPropagation();if(slot.kind==='free')openWalkinModal(it.id,slot.start,slot.people);else{selectedBooking=slot.b.id;selected=it.id;draw();showBookingQuickCard(slot.b.id)}});
+   strip.append(seg);
+  }
+  return;
+ }
  if(!columns){strip.textContent='';return}
  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
  const W=1000,H=100,margin=(layout.left||layout.right)?24:0,unit=(W-2*margin)/columns;
@@ -539,7 +561,7 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
    label.style.top=y+'%';
    label.style.width=((x2-x1)/W*100)+'%';
    const pxWidth=(x2-x1)*pxScale;
-   label.style.fontSize=(pxWidth>=72?12:pxWidth>=46?11:pxWidth>=27?10:9)+'px';
+   label.style.fontSize=(pxWidth>=72?13:pxWidth>=46?12:11)+'px';
    const text=document.createElement('span');
    text.className=kind==='name'?'physical-booking-name':'physical-booking-count';
    text.textContent=value;
@@ -560,7 +582,7 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
    const label=document.createElement('div');label.className='physical-booking-label';
    label.style.left=(center/W*100)+'%';
    label.style.width=Math.max(0,Math.min(100,(rightX-leftX)/W*100))+'%';
-   label.style.fontSize=(pxWidth>=72?12:pxWidth>=46?11:pxWidth>=27?10:9)+'px';
+   label.style.fontSize=(pxWidth>=72?13:pxWidth>=46?12:11)+'px';
    const name=document.createElement('span');name.className='physical-booking-name';name.textContent=free?'LIBERO':b.name;
    const count=document.createElement('span');count.className='physical-booking-count';count.textContent=free?slot.people+' liberi':String(slot.people);
    label.append(name,count);label.title=(free?'Posti liberi':b.name)+' · '+slot.people;
@@ -571,7 +593,7 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
  // la linea fa un unico gradino centrale, senza diagonali o incroci.
  for(const edge of boundaries){
   const x1=edge.top,x2=edge.bottom;
-  const d=Math.abs(x1-x2)<.1?`M ${x1} 0 V 100`:`M ${x1} 0 V 50 H ${x2} V 100`;
+  const d=Math.abs(x1-x2)<.1?`M ${x1} 0 V 100`:`M ${x1} 0 V 46 H ${x2} V 54 V 100`;
   make('path',{d,fill:'none',stroke:'#334155','stroke-width':1.65,'vector-effect':'non-scaling-stroke','pointer-events':'none'});
  }
  strip.prepend(svg);
