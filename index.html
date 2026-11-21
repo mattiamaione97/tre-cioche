@@ -358,7 +358,7 @@ html,body,button,input,select,textarea,.stage,.world,#walkinModal{touch-action:m
 #walkinModal .walkin-stepper button{flex:0 0 58px;min-width:58px;min-height:54px;margin:0;font-size:30px;font-weight:800;background:#e0e7ff;color:#1e40af;border:1px solid #93c5fd;border-radius:10px}
 #walkinModal .walkin-stepper button:disabled{opacity:.35;cursor:not-allowed;background:#e5e7eb;color:#64748b}
 .quick-booking .booking-lock{display:inline-flex;align-items:center;justify-content:center;flex:0 0 23px;width:23px;height:23px;font-size:17px;margin-right:5px;background:#fef3c7;border:1px solid #f59e0b;border-radius:5px;vertical-align:middle}
-</style><div id="waiterPage" class="hidden" role="region" aria-label="Gestione camerieri"><div class="waiter-shell"><div class="waiter-head"><h2>👥 Camerieri e assegnazione tavoli</h2><button type="button" id="closeWaiters">✕ Torna alla mappa</button></div><div class="waiter-card"><div id="waiterEventName" class="waiter-muted"></div><h3>Aggiungi cameriere</h3><form id="waiterAddForm" class="waiter-add"><input id="waiterName" type="text" maxlength="70" placeholder="Nome del cameriere" required autocomplete="off"><button type="submit" class="primary">+ Aggiungi</button></form><div id="waiterList"></div></div><div class="waiter-card" id="waiterDirectCard" style="display:none"><h3 id="waiterDirectTitle">Assegna cameriere al tavolo</h3><label class="field">Cameriere<select id="waiterDirectSelect"></select></label><p class="waiter-muted">La modifica viene salvata automaticamente. Puoi anche aggiungere un nuovo cameriere qui sopra.</p></div><div class="waiter-card"><h3>Assegna tavolate</h3><p class="waiter-muted">Seleziona un cameriere sopra, poi tocca le tavolate che deve servire. Un tavolo può essere assegnato a un solo cameriere; ogni cameriere può gestire più tavoli. Le modifiche si salvano automaticamente.</p><div id="waiterSelected" class="waiter-muted"></div><div id="waiterTableList" class="waiter-tables"></div></div></div></div><div id="waiterQuickModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="waiterQuickTitle" style="position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.42);display:flex;align-items:center;justify-content:center;padding:18px"><div style="background:white;border-radius:15px;padding:22px;width:min(390px,100%);box-shadow:0 18px 55px #0004"><h2 id="waiterQuickTitle" style="margin:0 0 16px;font-size:20px">👤 Cameriere</h2><label class="field">Assegna cameriere<select id="waiterQuickSelect" style="width:100%;min-height:45px"></select></label><div style="display:flex;justify-content:flex-end;gap:9px;margin-top:18px"><button type="button" id="waiterQuickCancel">Annulla</button><button type="button" id="waiterQuickSave" class="primary">✓ Salva</button></div></div></div><style>#waiterQuickModal.hidden{display:none!important}</style><div id="capacityModal" class="hidden" role="dialog" aria-modal="true" aria-label="Gestione capienza"><div class="dialog" id="capacityDialog"></div></div><div id="walkinModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="walkinHeading"><form class="walkin-box" id="walkinForm"><h2 id="walkinHeading">➕ Cliente senza prenotazione</h2><p id="walkinTableInfo"></p><label for="walkinName">Nome cliente<input id="walkinName" type="text" maxlength="120" required autocomplete="off" placeholder="Nome e cognome"></label><label for="walkinPeople">Numero persone</label><div class="walkin-stepper"><button type="button" id="walkinMinus" aria-label="Una persona in meno">−</button><input id="walkinPeople" type="number" min="1" max="2000" step="1" required inputmode="numeric" value="2" aria-label="Numero persone"><button type="button" id="walkinPlus" aria-label="Una persona in più">+</button></div><div class="walkin-error" id="walkinError" role="alert"></div><div class="walkin-actions"><button type="button" id="walkinCancel">Annulla</button><button class="primary" type="submit">✓ Inserisci e assegna</button></div></form></div><div id="v22Card" class="hidden" role="dialog" aria-modal="true" aria-label="Scheda prenotazione"><div class="v22-dialog" id="v22CardBody"></div></div><script>
+</style><div id="waiterPage" class="hidden" role="region" aria-label="Gestione camerieri"><div class="waiter-shell"><div class="waiter-head"><h2>👥 Camerieri e assegnazione tavoli</h2><button type="button" id="closeWaiters">✕ Torna alla mappa</button></div><div class="waiter-card"><div id="waiterEventName" class="waiter-muted"></div><h3>Aggiungi cameriere</h3><form id="waiterAddForm" class="waiter-add"><input id="waiterName" type="text" maxlength="70" placeholder="Nome del cameriere" required autocomplete="off"><button type="submit" class="primary">+ Aggiungi</button></form><div id="waiterList"></div></div><div class="waiter-card" id="waiterDirectCard" style="display:none"><h3 id="waiterDirectTitle">Assegna cameriere al tavolo</h3><label class="field">Cameriere<select id="waiterDirectSelect"></select></label><p class="waiter-muted">La modifica viene salvata automaticamente. Puoi anche aggiungere un nuovo cameriere qui sopra.</p></div><div class="waiter-card"><h3>Assegna tavolate</h3><p class="waiter-muted">Seleziona un cameriere sopra, poi tocca le tavolate che deve servire. Un tavolo può essere assegnato a un solo cameriere; ogni cameriere può gestire più tavoli. Le modifiche si salvano automaticamente.</p><div id="waiterSelected" class="waiter-muted"></div><div id="waiterTableList" class="waiter-tables"></div></div></div></div><div id="waiterQuickModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="waiterQuickTitle" style="position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.42);display:flex;align-items:center;justify-content:center;padding:18px"><div style="background:white;border-radius:15px;padding:22px;width:min(390px,100%);box-shadow:0 18px 55px #0004"><h2 id="waiterQuickTitle" style="margin:0 0 16px;font-size:20px">👤 Cameriere</h2><label class="field">Assegna cameriere<select id="waiterQuickSelect" style="width:100%;min-height:45px"></select></label><div style="display:flex;justify-content:flex-end;gap:9px;margin-top:18px"><button type="button" id="waiterQuickCancel">Annulla</button><button type="button" id="waiterQuickSave" class="primary">✓ Salva</button></div></div></div><style>#waiterQuickModal.hidden{display:none!important}</style><div id="capacityModal" class="hidden" role="dialog" aria-modal="true" aria-label="Gestione capienza"><div class="dialog" id="capacityDialog"></div></div><div id="walkinModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="walkinHeading"><form class="walkin-box" id="walkinForm"><h2 id="walkinHeading">➕ Cliente senza prenotazione</h2><p id="walkinTableInfo"></p><div id="walkinTabs" style="display:flex;gap:6px;margin:10px 0 14px" role="tablist" aria-label="Tipo cliente"><button type="button" id="walkinTabNew" role="tab" aria-selected="true" style="flex:1">Senza prenotazione</button><button type="button" id="walkinTabExisting" role="tab" aria-selected="false" style="flex:1">Con prenotazione</button></div><div id="walkinExistingBox" class="hidden" style="margin:12px 0"><label class="field">Cerca una prenotazione già registrata<input id="walkinExistingSearch" type="search" placeholder="Cerca per nome" autocomplete="off"></label><label class="field">Prenotazione<select id="walkinExistingSelect" style="width:100%;min-height:44px"></select></label><p class="hint" id="walkinExistingHint"></p></div><label for="walkinName">Nome cliente<input id="walkinName" type="text" maxlength="120" required autocomplete="off" placeholder="Nome e cognome"></label><label for="walkinPeople">Numero persone</label><div class="walkin-stepper"><button type="button" id="walkinMinus" aria-label="Una persona in meno">−</button><input id="walkinPeople" type="number" min="1" max="2000" step="1" required inputmode="numeric" value="2" aria-label="Numero persone"><button type="button" id="walkinPlus" aria-label="Una persona in più">+</button></div><div class="walkin-error" id="walkinError" role="alert"></div><div class="walkin-actions"><button type="button" id="walkinCancel">Annulla</button><button class="primary" type="submit">✓ Inserisci e assegna</button></div></form></div><div id="v22Card" class="hidden" role="dialog" aria-modal="true" aria-label="Scheda prenotazione"><div class="v22-dialog" id="v22CardBody"></div></div><script>
 (()=>{'use strict';
 const sidebar=document.getElementById('creationSidebar');const props=document.getElementById('propertySidebar');sidebar.appendChild(document.createElement('hr')).className='divider';sidebar.appendChild(props);
 const layout=document.getElementById('mainLayout'),toggle=document.getElementById('toggleCreation');
@@ -1515,6 +1515,32 @@ $('recalculate').onclick=showRecalculation;
 
 // V25.11 — inserimento rapido di clienti arrivati senza prenotazione.
 let walkinTableId=null,walkinSlotStart=null,walkinSlotCapacity=null;
+let walkinMode='new';
+function setWalkinMode(mode){
+ walkinMode=mode;const existing=mode==='existing';
+ $('walkinTabNew').setAttribute('aria-selected',String(!existing));$('walkinTabExisting').setAttribute('aria-selected',String(existing));
+ $('walkinTabNew').style.background=existing?'#f1f5f9':'#dbeafe';$('walkinTabExisting').style.background=existing?'#dbeafe':'#f1f5f9';
+ $('walkinExistingBox').classList.toggle('hidden',!existing);
+ $('walkinName').parentElement.style.display=existing?'none':'';
+ $('walkinName').required=!existing;
+ $('walkinPeople').closest('.walkin-stepper').style.display=existing?'none':'';
+ document.querySelector('label[for="walkinPeople"]').style.display=existing?'none':'';
+ $('walkinForm').querySelector('button[type="submit"]').textContent=existing?'✓ Assegna prenotazione':'✓ Inserisci e assegna';
+ $('walkinHeading').textContent=existing?'📋 Cliente con prenotazione':'➕ Cliente senza prenotazione';
+ $('walkinError').textContent='';if(existing)refreshWalkinExisting();
+}
+function refreshWalkinExisting(){
+ const q=$('walkinExistingSearch').value.trim().toLocaleLowerCase('it');
+ const cap=Number.isFinite(walkinSlotCapacity)?walkinSlotCapacity:Number($('walkinPeople').max);
+ const eligible=bookings().filter(b=>b.status==='active'&&!b.tableId&&Number(b.people)>0&&(!q||b.name.toLocaleLowerCase('it').includes(q))).sort((a,b)=>a.name.localeCompare(b.name,'it'));
+ const sel=$('walkinExistingSelect'),prev=sel.value;sel.replaceChildren(new Option('— Seleziona prenotazione —',''));
+ for(const b of eligible)sel.add(new Option(b.name+' · '+b.people+' persone'+(Number(b.people)>cap?' (troppi posti)':''),b.id));
+ if(eligible.some(b=>b.id===prev))sel.value=prev;
+ $('walkinExistingHint').textContent=eligible.length?'Sono mostrate le prenotazioni attive ancora senza tavolo. Posti disponibili in questo blocco: '+cap+'.':'Nessuna prenotazione da assegnare trovata.';
+}
+$('walkinTabNew').onclick=()=>setWalkinMode('new');$('walkinTabExisting').onclick=()=>setWalkinMode('existing');
+$('walkinExistingSearch').oninput=refreshWalkinExisting;
+
 function closeWalkinModal(){walkinTableId=null;walkinSlotStart=null;walkinSlotCapacity=null;$('walkinModal').classList.add('hidden');$('walkinError').textContent='';}
 function openWalkinModal(tableId,slotStart=null,slotCapacity=null){
  const t=allTables().find(x=>x.item.id===tableId);if(!t)return;
@@ -1524,7 +1550,7 @@ function openWalkinModal(tableId,slotStart=null,slotCapacity=null){
  walkinSlotStart=slotStart;walkinSlotCapacity=slotCapacity;
  walkinTableId=tableId;$('walkinForm').reset();$('walkinPeople').value=available;
  $('walkinPeople').max=available;$('walkinTableInfo').textContent='Tavolo '+t.item.name+' · '+available+' posti disponibili';
- $('walkinError').textContent='';updateWalkinStepper();$('walkinModal').classList.remove('hidden');
+ $('walkinError').textContent='';$('walkinExistingSearch').value='';setWalkinMode('new');updateWalkinStepper();$('walkinModal').classList.remove('hidden');
  let swapBtn=$('walkinSwapFree');if(!swapBtn){swapBtn=document.createElement('button');swapBtn.id='walkinSwapFree';swapBtn.type='button';swapBtn.style.cssText='width:100%;margin-top:12px;min-height:46px;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:9px;font-weight:700';swapBtn.textContent='↔ Sposta / scambia questi posti liberi';$('walkinForm').append(swapBtn)}
  swapBtn.style.display=Number.isFinite(slotStart)?'block':'none';
  swapBtn.onclick=()=>{const id=walkinTableId,start=walkinSlotStart;closeWalkinModal();showTableSegmentSwapDialog(id,'free:'+start)};
@@ -1548,6 +1574,21 @@ $('walkinCancel').addEventListener('click',closeWalkinModal);
 // Il popup si chiude esclusivamente con Annulla o con Inserisci e assegna.
 $('walkinForm').addEventListener('submit',e=>{
  e.preventDefault();const tableId=walkinTableId;
+ if(walkinMode==='existing'){
+  const b=bookings().find(x=>x.id===$('walkinExistingSelect').value);
+  const t=allTables().find(x=>x.item.id===tableId);
+  if(!t||!b||b.status!=='active'||b.tableId){$('walkinError').textContent='Seleziona una prenotazione attiva ancora senza tavolo.';return}
+  if(t.item.locked){$('walkinError').textContent='Questo tavolo è bloccato.';return}
+  const cap=t.item.base+(t.item.ends||[]).filter(x=>x==='seat').length;
+  const used=bookings().filter(x=>x.status==='active'&&x.tableId===tableId).reduce((n,x)=>n+Number(x.people||0),0);
+  const available=Math.min(cap-used,Number.isFinite(walkinSlotCapacity)?walkinSlotCapacity:Infinity);
+  if(Number(b.people)>available){$('walkinError').textContent='La prenotazione ha '+b.people+' persone, ma qui ci sono soltanto '+available+' posti liberi.';return}
+  b.tableId=tableId;
+  if(Number.isFinite(walkinSlotStart)){b.mapSeatStart=walkinSlotStart;b.mapSeatTableId=tableId;}
+  else{delete b.mapSeatStart;delete b.mapSeatTableId;}
+  selectedBooking=null;selected=null;save();closeWalkinModal();draw();notice(b.name+' · '+b.people+' persone assegnate al tavolo '+t.item.name);return;
+ }
+
  const t=allTables().find(x=>x.item.id===tableId);
  if(!t){$('walkinError').textContent='Tavolo non più disponibile.';return}
  const name=$('walkinName').value.trim(),people=Number($('walkinPeople').value);
