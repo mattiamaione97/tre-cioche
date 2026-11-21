@@ -362,6 +362,21 @@ function notice(s){$('toast').textContent=s;setTimeout(()=>{$('toast').textConte
 function mapPad(z){const c=$('canvas'),f=fitViewInfo();return {x:Math.max(0,c.clientWidth/2-f.x*z),y:Math.max(0,c.clientHeight/2-f.y*z)}}
 // V25.44: dopo un calcolo compatta soltanto le prenotazioni spostabili.
 // Non altera mai l'ordine fisico di chi e' gia' seduto, bloccato o su tavolo bloccato.
+// V25.52 — Geometria a coppie frontali: gli indici 0/1, 2/3, ...
+// rappresentano posti opposti. Per un gruppo dispari e' ammesso un solo
+// posto sporgente, all'inizio oppure alla fine dell'intervallo.
+// I capotavola sono gestiti separatamente: la loro posizione non e' ancora
+// codificata nella striscia lineare, quindi non si inventano eccezioni.
+function frontSeatGeometryError(start,people){
+ const n=Number(people);
+ if(!Number.isInteger(start)||!Number.isInteger(n)||n<1)return 'Posizione o numero di persone non valido.';
+ if(n%2===0&&start%2!==0)return 'La prenotazione da '+n+' persone deve iniziare su una coppia di posti frontali: le '+(n/2)+' coppie devono stare una di fronte all’altra.';
+ return null;
+}
+function tableFrontGeometryWarnings(tableId){
+ return bookings().filter(b=>b.status==='active'&&b.tableId===tableId&&b.mapSeatTableId===tableId&&Number.isInteger(b.mapSeatStart))
+  .map(b=>({b,error:frontSeatGeometryError(b.mapSeatStart,Number(b.people))})).filter(x=>x.error);
+}
 function compactMapSeatsAfterCalculation(){
  const all=bookings();
  for(const t of allTables()){
@@ -390,7 +405,13 @@ function compactMapSeatsAfterCalculation(){
     if(!gaps.length)return null;
     // Preferisci completare un intervallo gia' piccolo anziche' frammentare gli altri.
     gaps.sort((a,c)=>(a.end-a.start)-(c.end-c.start)|| (fromRight?c.start-a.start:a.start-c.start));
-    const g=gaps[0],start=fromRight?g.end-n:g.start;
+    let start=-1;
+    for(const g of gaps){
+     const choices=[];
+     for(let pos=g.start;pos+n<=g.end;pos++)if(!frontSeatGeometryError(pos,n))choices.push(pos);
+     if(choices.length){start=fromRight?choices[choices.length-1]:choices[0];break}
+    }
+    if(start<0)return null;
     placed.push({start,end:start+n,b});result.set(b.id,start);
    }
    const sorted=placed.sort((a,c)=>a.start-c.start);let cursor=0,runs=0,biggest=0,squares=0;
@@ -400,7 +421,7 @@ function compactMapSeatsAfterCalculation(){
    return {result,runs,biggest,squares,displacement};
   };
   const candidates=[];
-  const variants=[original,original.slice().reverse(),original.slice().sort((a,b)=>Number(b.people)-Number(a.people)),original.slice().sort((a,b)=>Number(a.people)-Number(b.people))];
+  const variants=[original,original.slice().reverse(),original.slice().sort((a,b)=>Number(b.people)-Number(a.people)),original.slice().sort((a,b)=>Number(a.people)-Number(b.people)),original.slice().sort((a,b)=>(Number(a.people)%2)-(Number(b.people)%2)||Number(b.people)-Number(a.people)),original.slice().sort((a,b)=>(Number(b.people)%2)-(Number(a.people)%2)||Number(b.people)-Number(a.people))];
   for(const order of variants)for(const right of [false,true]){const c=evaluate(order,right);if(c)candidates.push(c)}
   candidates.sort((a,b)=>a.runs-b.runs||b.biggest-a.biggest||b.squares-a.squares||a.displacement-b.displacement);
   if(candidates.length){for(const b of movable){b.mapSeatStart=candidates[0].result.get(b.id);b.mapSeatTableId=it.id}}
@@ -463,6 +484,7 @@ for(const slot of visibleSlots){
  segment.className='seatseg '+(isFree?'v22-free':b.seated?'v22-seated':'v22-waiting')+(!isFree&&b.id===selectedBooking?' focusbooking':'');
  segment.style.flex='0 0 '+(100*slot.people/capacity)+'%';
  segment.title=isFree?'Posti liberi ('+slot.people+') · Tocca per inserire un cliente senza prenotazione':b.name+' — '+slot.people+' persone';
+ if(!isFree){const geo=frontSeatGeometryError(b.mapSeatStart,slot.people);if(geo){segment.style.outline='3px dashed #dc2626';segment.style.outlineOffset='-3px';segment.title+=' ⚠️ '+geo}}
  const n=document.createElement('span');n.className='segname';n.textContent=isFree?'LIBERO':b.name;
  if(!isFree&&b.pinned){const lock=document.createElement('span');lock.className='mapBookingLock';lock.textContent='🔒';lock.title='Prenotazione bloccata';segment.append(lock)}
  const q=document.createElement('span');q.className='segcount';q.textContent=isFree?slot.people+' liberi':slot.people;
@@ -1152,7 +1174,7 @@ function showOptimization(){const plan=optimizePlan();pendingOptimization=plan;c
  if(overfullProposed.length){const err=document.createElement('p');err.style.cssText='color:#991b1b;font-weight:800;background:#fee2e2;padding:12px;border:2px solid #dc2626;border-radius:8px';err.textContent='⛔ OTTIMIZZAZIONE BLOCCATA: capienza superata nella proposta: '+overfullProposed.map(t=>'tavolo '+t.name+' ('+projectedCounts.get(t.id)+'/'+t.cap+')').join(', ')+'. Nessuna modifica sarà applicata.';box.append(err)}
  const invalidExisting=plan.active.filter(b=>{const tid=plan.removals.has(b.id)?null:(plan.moves.get(b.id)||b.tableId||plan.assignments.get(b.id));return tid&&musicConstraint(b)&&allTables().find(t=>t.item.id===tid)?.item.musicZone!==musicConstraint(b)});
  if(invalidExisting.length){const err=document.createElement('p');err.style.cssText='color:#991b1b;font-weight:700;background:#fee2e2;padding:10px;border-radius:8px';err.textContent='⛔ Assegnazioni già presenti che violano vincoli obbligatori: '+invalidExisting.map(b=>b.name).join(', ')+'. Correggile prima della conferma.';box.append(err)}
- const actions=document.createElement('div');actions.className='row';actions.style.marginTop='12px';const apply=document.createElement('button');apply.className='primary';apply.textContent='✓ Conferma '+plan.assignments.size+' assegnazioni, '+plan.moves.size+' spostamenti e '+plan.removals.size+' liberazioni';apply.disabled=!(plan.assignments.size||plan.moves.size||plan.removals.size)||invalidExisting.length>0||overfullProposed.length>0;apply.onclick=()=>{if(pendingOptimization!==plan)return;if(!confirm('Confermi '+plan.assignments.size+' nuove assegnazioni e '+plan.moves.size+' spostamenti proposti? Le prenotazioni bloccate o sedute non saranno spostate.'))return;for(const b of bookings()){if(b.status!=='active')continue;if(plan.removals.has(b.id)&&!b.pinned&&!b.seated)b.tableId=null;else if(plan.moves.has(b.id)&&!b.pinned&&!b.seated)b.tableId=plan.moves.get(b.id);else if(plan.assignments.has(b.id)&&!b.tableId)b.tableId=plan.assignments.get(b.id)}compactMapSeatsAfterCalculation();pendingOptimization=null;box.classList.add('hidden');selectedBooking=null;selected=null;save();draw();notice('Assegnazioni confermate. Puoi annullare con CTRL+Z.')};const cancel=document.createElement('button');cancel.textContent='Annulla anteprima';cancel.onclick=()=>{pendingOptimization=null;box.classList.add('hidden')};actions.append(apply,cancel);box.append(actions);box.scrollIntoView({behavior:'smooth',block:'nearest'});
+ const actions=document.createElement('div');actions.className='row';actions.style.marginTop='12px';const apply=document.createElement('button');apply.className='primary';apply.textContent='✓ Conferma '+plan.assignments.size+' assegnazioni, '+plan.moves.size+' spostamenti e '+plan.removals.size+' liberazioni';apply.disabled=!(plan.assignments.size||plan.moves.size||plan.removals.size)||invalidExisting.length>0||overfullProposed.length>0;apply.onclick=()=>{if(pendingOptimization!==plan)return;if(!confirm('Confermi '+plan.assignments.size+' nuove assegnazioni e '+plan.moves.size+' spostamenti proposti? Le prenotazioni bloccate o sedute non saranno spostate.'))return;for(const b of bookings()){if(b.status!=='active')continue;if(plan.removals.has(b.id)&&!b.pinned&&!b.seated)b.tableId=null;else if(plan.moves.has(b.id)&&!b.pinned&&!b.seated)b.tableId=plan.moves.get(b.id);else if(plan.assignments.has(b.id)&&!b.tableId)b.tableId=plan.assignments.get(b.id)}compactMapSeatsAfterCalculation();const geometryWarnings=allTables().flatMap(t=>tableFrontGeometryWarnings(t.item.id));if(geometryWarnings.length)alert('⚠️ Alcune posizioni già esistenti non rispettano la disposizione frontale e non sono state spostate automaticamente:\n'+geometryWarnings.slice(0,12).map(x=>'• '+x.b.name+': '+x.error).join('\n'));pendingOptimization=null;box.classList.add('hidden');selectedBooking=null;selected=null;save();draw();notice('Assegnazioni confermate. Puoi annullare con CTRL+Z.')};const cancel=document.createElement('button');cancel.textContent='Annulla anteprima';cancel.onclick=()=>{pendingOptimization=null;box.classList.add('hidden')};actions.append(apply,cancel);box.append(actions);box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 $('optimize').onclick=showOptimization;
 
@@ -1224,7 +1246,7 @@ function showRecalculation(){
  apply.disabled=!better||!plan.changes.length||plan.problems.some(x=>x.startsWith('⛔')&&/bloccate su tavolate diverse|non ha capienza|non rispetta la zona/.test(x));
  apply.onclick=()=>{if(!confirm('Applicare il ricalcolo? Le modifiche saranno annullabili con CTRL+Z.'))return;
   for(const b of bookings())if(b.status==='active'&&plan.active.some(x=>x.id===b.id))b.tableId=plan.assignments.get(b.id)||null;
-  compactMapSeatsAfterCalculation();selectedBooking=null;selected=null;save();draw();box.classList.add('hidden');notice('Ricalcolo applicato. CTRL+Z per annullare.')};
+  compactMapSeatsAfterCalculation();const geometryWarnings=allTables().flatMap(t=>tableFrontGeometryWarnings(t.item.id));if(geometryWarnings.length)alert('⚠️ Posizioni esistenti non allineate (non spostate automaticamente):\n'+geometryWarnings.slice(0,12).map(x=>'• '+x.b.name+': '+x.error).join('\n'));selectedBooking=null;selected=null;save();draw();box.classList.add('hidden');notice('Ricalcolo applicato. CTRL+Z per annullare.')};
  const cancel=document.createElement('button');cancel.textContent='Annulla';cancel.onclick=()=>box.classList.add('hidden');actions.append(apply,cancel);box.append(actions);box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 $('recalculate').onclick=showRecalculation;
@@ -1277,7 +1299,7 @@ $('walkinForm').addEventListener('submit',e=>{
  if(!name){$('walkinError').textContent='Inserisci il nome del cliente.';return}
  if(!Number.isInteger(people)||people<1||people>available){$('walkinError').textContent='Inserisci da 1 a '+available+' persone.';return}
  const b={id:uid(),name,people,comment:'',status:'active',tableId,seated:true,pinned:false};
- if(Number.isFinite(walkinSlotStart)){b.mapSeatStart=walkinSlotStart;b.mapSeatTableId=tableId;}
+ if(Number.isFinite(walkinSlotStart)){const geo=frontSeatGeometryError(walkinSlotStart,Number(b.people));if(geo){alert('⛔ Posizione non consentita\n\n'+geo+'\nScegli un’altra porzione libera.');return}b.mapSeatStart=walkinSlotStart;b.mapSeatTableId=tableId;}
  bookings().push(b);selectedBooking=null;selected=null;save();closeWalkinModal();draw();notice(name+' · '+people+' persone inserite al tavolo '+t.item.name);
 });
 // V25.50 — Scambio dell'ordine fisico delle prenotazioni nella stessa tavolata.
@@ -1314,6 +1336,12 @@ function validateTableSegmentSwap(tableId,key1,key2){
  const order=segments.slice();[order[i],order[j]]=[order[j],order[i]];
  const starts=new Map();let cursor=0;
  for(const seg of order){if(seg.kind==='booking')starts.set(seg.b.id,cursor);cursor+=seg.people}
+ for(const seg of segments){
+  if(seg.kind==='booking'){
+   const err=frontSeatGeometryError(starts.get(seg.b.id),seg.people);
+   if(err)return {error:'Disposizione frontale non rispettata per '+seg.b.name+': '+err+' Prova un altro scambio o sposta anche un blocco di posti liberi.'};
+  }
+ }
  for(const seg of segments){
   if(seg.kind==='booking'&&(seg.b.seated||seg.b.pinned)&&starts.get(seg.b.id)!==seg.start)
    return {error:'Lo scambio sposterebbe '+seg.b.name+', già seduto/a o con posizione bloccata.'};
