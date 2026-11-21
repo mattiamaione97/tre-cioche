@@ -1495,15 +1495,49 @@ function recalculatePlan(){
   if(!choices.length){g.blocked=true;problems.push('⛔ '+g.bs.map(b=>b.name).join(' + ')+' ('+g.size+'): nessuna tavolata disponibile'+(g.required.length?' nella zona «'+musicLabel(g.required[0])+'»':'')+'. Gruppo non assegnato.');continue}
   const t=choices[0];t.used+=g.size;t.bs.push(...g.bs);for(const b of g.bs)assignments.set(b.id,t.id);
  }
+ // V25.67: bilanciamento reale fra tavoli: scambia DUE prenotazioni da 2
+ // con UNA da 4, a parita' di coperti. Non impone limiti artificiali ai 2.
+ // Mai toccare prenotazioni bloccate/sedute, tavoli bloccati, gruppi collegati
+ // o richieste di zona musicale incompatibili. Non altera capienze e tavoli usati.
+ const mixBefore=()=>tables.reduce((sum,t)=>{const n=t.bs.filter(b=>b.people===2).length;return sum+n*n},0);
+ const mixInitial=mixBefore();let mixSwaps=0;
+ const singleIds=new Set(groups.filter(g=>!g.blocked&&g.bs.length===1).map(g=>g.bs[0].id));
+ const canMove=(b,to)=>singleIds.has(b.id)&&!b.pinned&&!b.seated&&
+  !byId.get(assignments.get(b.id))?.item.locked&&
+  !to.item.locked&&(!musicConstraint(b)||musicConstraint(b)===to.item.musicZone);
+ for(let attempt=0;attempt<24;attempt++){
+  let best=null,bestGain=0;
+  for(const source of tables){
+   const twos=source.bs.filter(b=>b.people===2&&canMove(b,source));
+   if(twos.length<2)continue;
+   for(const dest of tables){if(dest.id===source.id)continue;
+    const fours=dest.bs.filter(b=>b.people===4&&canMove(b,source));
+    if(!fours.length)continue;
+    const pair=twos.filter(b=>canMove(b,dest)).slice(0,2);
+    if(pair.length<2)continue;
+    const nA=source.bs.filter(b=>b.people===2).length,nB=dest.bs.filter(b=>b.people===2).length;
+    const gain=nA*nA+nB*nB-(nA-2)*(nA-2)-(nB+2)*(nB+2);
+    if(gain>bestGain){bestGain=gain;best={source,dest,pair,four:fours[0]}}
+   }
+  }
+  if(!best)break;
+  const {source,dest,pair,four}=best;
+  source.bs=source.bs.filter(b=>!pair.includes(b));dest.bs=dest.bs.filter(b=>b!==four);
+  source.bs.push(four);dest.bs.push(...pair);
+  assignments.set(four.id,source.id);for(const b of pair)assignments.set(b.id,dest.id);
+  mixSwaps++;
+ }
+ if(mixSwaps)problems.push('✓ Distribuzione prenotazioni da 2 persone migliorata con '+mixSwaps+' scambi equivalenti, senza modificare i coperti per tavolo.');
+ const mixImproved=mixBefore()<mixInitial;
  const changes=active.filter(b=>(assignments.get(b.id)||null)!==(b.tableId||null));
  const moved=changes.filter(b=>b.tableId&&assignments.has(b.id));const added=changes.filter(b=>!b.tableId&&assignments.has(b.id));
  const freed=changes.filter(b=>b.tableId&&!assignments.has(b.id));
  const unchanged=active.length-changes.length;
  const beforeUsed=new Set(active.map(b=>b.tableId).filter(Boolean));const afterUsed=new Set(assignments.values());
- return {active,tables,assignments,problems,changes,moved,added,freed,unchanged,beforeUsed,afterUsed};
+ return {active,tables,assignments,problems,changes,moved,added,freed,unchanged,beforeUsed,afterUsed,mixImproved};
 }
 function showRecalculation(){
- const plan=recalculatePlan(),box=$('optPreview');pendingOptimization=null;const oldAssigned=plan.active.filter(b=>b.tableId).reduce((n,b)=>n+b.people,0),newAssigned=plan.active.filter(b=>plan.assignments.has(b.id)).reduce((n,b)=>n+b.people,0);const better=newAssigned>oldAssigned||(newAssigned===oldAssigned&&plan.afterUsed.size<plan.beforeUsed.size);const unchangedGood=!better&&!plan.problems.length;box.classList.remove('hidden');box.replaceChildren();
+ const plan=recalculatePlan(),box=$('optPreview');pendingOptimization=null;const oldAssigned=plan.active.filter(b=>b.tableId).reduce((n,b)=>n+b.people,0),newAssigned=plan.active.filter(b=>plan.assignments.has(b.id)).reduce((n,b)=>n+b.people,0);const better=newAssigned>oldAssigned||(newAssigned===oldAssigned&&(plan.afterUsed.size<plan.beforeUsed.size||plan.mixImproved));const unchangedGood=!better&&!plan.problems.length;box.classList.remove('hidden');box.replaceChildren();
  const h=document.createElement('h3');h.textContent='🔄 Anteprima ricalcolo — '+currentEvent().name;box.append(h);if(unchangedGood){const note=document.createElement('p');note.className='notice';note.textContent='✅ Nessun miglioramento individuato: non vengono proposti spostamenti equivalenti o peggiorativi.';box.append(note)}
  const p=document.createElement('p');p.textContent=plan.active.length+' prenotazioni · '+plan.unchanged+' mantenute · '+plan.moved.length+' spostate · '+plan.added.length+' nuove assegnate · '+plan.freed.length+' liberate · '+(plan.beforeUsed.size-plan.afterUsed.size)+' tavolate occupate in meno (saldo).';box.append(p);
  const info=document.createElement('p');info.className='notice';info.textContent='Le prenotazioni con 🔒 e le tavolate bloccate non vengono spostate. Gli spostamenti manuali non sono bloccati automaticamente. I gruppi «vicino a» restano consecutivi nella rappresentazione.';box.append(info);
