@@ -608,6 +608,8 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
   for(const slot of slots){
    const seg=document.createElement('div');seg.className='seatseg '+(slot.kind==='free'?'v22-free emptyseg':slot.b.seated?'v22-seated':'v22-waiting');
    seg.style.flex=String(slot.people)+' 1 0';
+   if(slot.kind==='booking'&&selectedBooking===slot.b.id)seg.classList.add('focusbooking');
+   if(slot.kind==='free')seg.style.setProperty('border-right','2px solid #1e293b','important');
    const nm=document.createElement('span');nm.className='segname';nm.textContent=slot.kind==='free'?'LIBERO':slot.b.name;
    const ct=document.createElement('span');ct.className='segcount';ct.textContent=String(slot.people);
    seg.append(nm,ct);seg.addEventListener('click',ev=>{ev.stopPropagation();if(slot.kind==='free')openWalkinModal(it.id,slot.start,slot.people);else{selectedBooking=slot.b.id;selected=it.id;draw();showBookingQuickCard(slot.b.id)}});
@@ -705,6 +707,8 @@ function renderPhysicalSeatStrip(strip,it,slots,capacity){
   const d=Math.abs(x1-x2)<.1?`M ${x1} 0 V 100`:`M ${x1} 0 V 50 H ${x2} V 100`;
   make('path',{d,fill:'none',stroke:'#334155','stroke-width':edge.freeRight?2.5:1.65,'vector-effect':'non-scaling-stroke','pointer-events':'none'});
  }
+ // Porta i contorni selezionati sopra TUTTI i riempimenti e divisori SVG.
+ for(const node of Array.from(svg.querySelectorAll('path[stroke="#f59e0b"],rect[stroke="#f59e0b"]')))svg.append(node);
  // V25.62: il bordo destro di ogni gruppo LIBERO e' esplicito e sempre sopra i riempimenti.
  // I gruppi liberi intermedi hanno il divisore gia' tracciato sopra; lo rinforziamo senza creare contorni interni.
  // Bordo netto ai due estremi della superficie fisica, anche per le zone verdi.
