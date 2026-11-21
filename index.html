@@ -384,7 +384,7 @@ function mapPad(z){const c=$('canvas'),f=fitViewInfo();return {x:Math.max(0,c.cl
 function frontSeatGeometryError(start,people){
  const n=Number(people);
  if(!Number.isInteger(start)||!Number.isInteger(n)||n<1)return 'Posizione o numero di persone non valido.';
- if(n%2===0&&start%2!==0)return 'La prenotazione da '+n+' persone deve iniziare su una coppia di posti frontali: le '+(n/2)+' coppie devono stare una di fronte all’altra.';
+ // Il controllo geometrico reale e` in physicalSeatLayout, non nella parita` dello slot.
  return null;
 }
 function tableFrontGeometryWarnings(tableId){
@@ -442,6 +442,70 @@ function compactMapSeatsAfterCalculation(){
   const byOdd=original.slice().sort((a,b)=>(Number(b.people)%2)-(Number(a.people)%2)||Number(b.people)-Number(a.people));
   const byEven=original.slice().sort((a,b)=>(Number(a.people)%2)-(Number(b.people)%2)||Number(b.people)-Number(a.people));
   variants.push(byOdd,byOdd.slice().reverse(),byEven,byEven.slice().reverse());
+  // Candidati con dispari alle estremita' se sono presenti capotavola;
+  // accoppia i dispari rimasti, poi dispone le prenotazioni pari.
+  // I gruppi con vincolo di vicinanza rimangono indivisibili.
+  const linkedBlocks=(()=>{
+   const ordered=orderAdjacentBookings(original),byId=new Map(ordered.map(b=>[b.id,b]));
+   const parent=new Map(ordered.map(b=>[b.id,b.id]));
+   const root=id=>{while(parent.get(id)!==id)id=parent.get(id);return id};
+   for(const b of ordered){let target=b.linkedTo&&byId.get(b.linkedTo);
+    if(!target){const m=matchLinkedBooking(b,all.filter(x=>x.status==='active'));if(m.kind==='auto')target=byId.get(m.target.id)}
+    if(target){const x=root(b.id),y=root(target.id);if(x!==y)parent.set(x,y)}}
+   const map=new Map();for(const b of ordered){const r=root(b.id);if(!map.has(r))map.set(r,[]);map.get(r).push(b)}
+   return [...map.values()];
+  })();
+  const leftCap=(it.ends||[])[0]==='seat',rightCap=(it.ends||[])[1]==='seat';
+  const size=block=>block.reduce((n,b)=>n+Number(b.people),0);
+  const isOdd=block=>size(block)%2===1;
+  const addOrder=blocks=>variants.push(blocks.flat());
+  const orderedBlocks=linkedBlocks.slice();
+  const arrangements=[orderedBlocks,orderedBlocks.slice().reverse(),orderedBlocks.slice().sort((a,b)=>size(b)-size(a))];
+  for(const baseBlocks of arrangements){
+   const odds=baseBlocks.filter(isOdd),evens=baseBlocks.filter(x=>!isOdd(x));
+   const edgeChoices=(leftCap?odds:[null]).slice(0,Math.max(1,Math.min(odds.length,8)));
+   for(const first of edgeChoices){
+    const rest=baseBlocks.filter(x=>x!==first);
+    const rightChoices=(rightCap?rest.filter(isOdd):[null]).slice(0,Math.max(1,Math.min(rest.length,8)));
+    for(const last of rightChoices){
+     const mid=rest.filter(x=>x!==last),middleOdds=mid.filter(isOdd),middleEvens=mid.filter(x=>!isOdd(x));
+     addOrder([...(first?[first]:[]),...middleOdds,...middleEvens,...(last?[last]:[])]);
+     addOrder([...(first?[first]:[]),...middleEvens,...middleOdds,...(last?[last]:[])]);
+     // Le coppie di dispari possono chiudere lo sfalsamento prima delle pari.
+     const pairwise=[];for(let k=0;k<middleOdds.length;k+=2)pairwise.push(...middleOdds.slice(k,k+2));
+     addOrder([...(first?[first]:[]),...pairwise,...middleEvens,...(last?[last]:[])]);
+    }
+   }
+  }
+  // Capotavola sinistro con prenotazione da 2: la sua unica persona
+  // laterale viene compensata subito da una prenotazione dispari.
+  if(leftCap){
+   const couples=linkedBlocks.filter(bl=>bl.length===1&&size(bl)===2);
+   const oddBlocks=linkedBlocks.filter(isOdd);
+   for(const couple of couples.slice(0,8))for(const odd of oddBlocks.slice(0,8)){
+    const remaining=linkedBlocks.filter(x=>x!==couple&&x!==odd);
+    const rightOptions=rightCap?remaining.filter(isOdd):[null];
+    for(const last of rightOptions.slice(0,8)){
+     const mid=remaining.filter(x=>x!==last);
+     const midOdd=mid.filter(isOdd),midEven=mid.filter(x=>!isOdd(x));
+     addOrder([couple,odd,...midOdd,...midEven,...(last?[last]:[])]);
+     addOrder([couple,odd,...midEven,...midOdd,...(last?[last]:[])]);
+    }
+   }
+  }
+  // Variante speculare: coppia al capotavola destro.
+  if(rightCap){
+   const couples=linkedBlocks.filter(bl=>bl.length===1&&size(bl)===2);
+   const oddBlocks=linkedBlocks.filter(isOdd);
+   for(const couple of couples.slice(0,8))for(const odd of oddBlocks.slice(0,8)){
+    const remaining=linkedBlocks.filter(x=>x!==couple&&x!==odd);
+    const leftOptions=leftCap?remaining.filter(isOdd):[null];
+    for(const first of leftOptions.slice(0,8)){
+     const mid=remaining.filter(x=>x!==first);
+     addOrder([...(first?[first]:[]),...mid.filter(isOdd),...mid.filter(x=>!isOdd(x)),odd,couple]);
+    }
+   }
+  }
   for(const order of variants)for(const right of [false,true]){const c=evaluate(order,right);if(c)candidates.push(c)}
   candidates.sort((a,b)=>Number(b.geometryValid)-Number(a.geometryValid)||a.runs-b.runs||a.geometryCost-b.geometryCost||b.biggest-a.biggest||b.squares-a.squares||a.displacement-b.displacement);
   if(candidates.length&&candidates[0].geometryValid){for(const b of movable){b.mapSeatStart=candidates[0].result.get(b.id);b.mapSeatTableId=it.id}}
@@ -455,45 +519,69 @@ function compactMapSeatsAfterCalculation(){
 // V25.54: geometria condivisa da ottimizzazione e mappa.
 // Ogni gruppo ha coppie frontali obbligatorie e, se dispari, un solo
 // posto laterale aggiuntivo. I capotavola sono soltanto a SINISTRA/DESTRA.
+// V25.58: assegnazione fisica verificata su due file e capotavola configurati.
+// Una prenotazione occupa floor(n/2) coppie realmente contrapposte;
+// l'eventuale posto dispari e' l'unico posto non accoppiato.
 function physicalSeatLayout(slots,it){
  const left=(it.ends||[])[0]==='seat',right=(it.ends||[])[1]==='seat';
- const columns=Math.floor(Math.max(0,Number(it.base)||0)/2);
- const groups=slots.filter(s=>s.people>0).map(s=>({slot:s,people:s.people,top:0,bottom:0,leftCap:0,rightCap:0}));
- if(!groups.length)return {groups,columns,left,right,top:0,bottom:0,valid:true};
- // L'eventuale capotavola appartiene esclusivamente al gruppo all'estremita'.
+ const base=Number(it.base)||0,columns=base/2;
+ const groups=slots.filter(s=>Number(s.people)>0).map(s=>({slot:s,people:Number(s.people),top:0,bottom:0,leftCap:0,rightCap:0}));
+ const invalid=reason=>({groups,columns,left,right,valid:false,reason});
+ if(!Number.isInteger(columns)||columns<0)return invalid('Numero di posti laterali non pari');
+ if(!groups.length)return {groups,columns,left,right,valid:true,cost:0};
+ const total=groups.reduce((v,g)=>v+g.people,0);
+ if(total!==base+Number(left)+Number(right))return invalid('Capienza fisica non corrispondente');
+ // I capotavola sono posti reali e appartengono SOLO al primo/ultimo blocco.
+ // Un blocco libero puo' comprenderli; non vengono mai inventati.
  if(left){groups[0].leftCap=1;groups[0].people--}
- if(right){const last=groups[groups.length-1];last.rightCap=1;last.people--}
- if(groups.some(g=>g.people<0))return {groups,columns,left,right,valid:false};
- // Programmazione dinamica: ogni prenotazione deve avere floor(n/2)
- // coppie frontali, piu' un solo posto extra se dispari.
- // I posti liberi possono invece occupare liberamente i due lati.
- let states=new Map([[0,{cost:0,path:[]}]]);
+ if(right){groups[groups.length-1].rightCap=1;groups[groups.length-1].people--}
+ if(groups.some(g=>g.people<0))return invalid('Capotavola senza posto disponibile');
+ // Stato: differenza tra posti sopra e sotto; progressi reali sui due lati.
+ let states=new Map([[0,{cost:0,top:0,bottom:0,path:[]}]]);
  for(const g of groups){
-  const next=new Map(),free=g.slot.kind==='free',n=g.people;
+  const next=new Map(),n=g.people,free=g.slot.kind==='free';
   const choices=[];
-  if(free){for(let top=0;top<=n;top++)choices.push([top,n-top])}
-  else {const half=Math.floor(n/2);choices.push([half+(n%2),half]);if(n%2)choices.push([half,half+1])}
-  for(const [delta,st] of states)for(const [top,bottom] of choices){
-   // V25.57: una prenotazione pari deve iniziare con le due file allineate.
-   // Un dispari puo' aprire uno sfalsamento, che un altro dispari richiude.
-   // Per un capotavola, il conteggio laterale residuo puo' essere dispari.
-   if(!free && g.slot.people%2===0 && !g.leftCap && !g.rightCap && delta!==0)continue;
-   const t=st.path.reduce((v,x)=>v+x[0],0)+top;
-   const b=st.path.reduce((v,x)=>v+x[1],0)+bottom;
+  if(free){for(let t=0;t<=n;t++)choices.push([t,n-t])}
+  else {
+   const original=Number(g.slot.people),caps=g.leftCap+g.rightCap;
+   // Se un capotavola completa il dispari, restano solo coppie frontali.
+   // Per il caso eccezionale di due capotavola sulla stessa prenotazione
+   // non e' ammesso attraversare il tavolo senza posti laterali coerenti.
+   if(caps===2&&groups.length===1){if(n%2===0)choices.push([n/2,n/2])}
+   else if(caps===1){if(original%2===1){if(n%2===0)choices.push([n/2,n/2])}
+    else if(original===2&&n===1){choices.push([1,0],[0,1])}
+    else if(n%2===1){choices.push([Math.ceil(n/2),Math.floor(n/2)],[Math.floor(n/2),Math.ceil(n/2)])}}
+   else if(n%2===0)choices.push([n/2,n/2]);
+   else choices.push([Math.ceil(n/2),Math.floor(n/2)],[Math.floor(n/2),Math.ceil(n/2)]);
+  }
+  for(const st of states.values())for(const [top,bottom] of choices){
+   const t=st.top+top,b=st.bottom+bottom;
    if(t>columns||b>columns)continue;
-   const imbalance=t-b;
-   // Premia i confini allineati e le coppie dispari che si compensano.
-   const cost=st.cost+Math.abs(imbalance)*2+(free?Math.abs(top-bottom)*.1:0);
-   const prev=next.get(imbalance);
-   if(!prev||cost<prev.cost)next.set(imbalance,{cost,path:[...st.path,[top,bottom]]});
+   // Ogni coppia della prenotazione deve trovarsi sulla STESSA colonna.
+   // Per un dispari l'unico posto extra puo' trovarsi al confine.
+   const overlap=Math.max(0,Math.min(t,b)-Math.max(st.top,st.bottom));
+   if(!free){
+    const needed=Math.floor((g.people)/2);
+    if(overlap<needed)continue;
+    // Per 2 persone: frontali, oppure un capotavola + laterale adiacente.
+    if(Number(g.slot.people)===2&&g.leftCap+g.rightCap===0&&overlap!==1)continue;
+    if(Number(g.slot.people)===2&&g.leftCap+g.rightCap===1){
+     if(g.leftCap&&st.top+st.bottom!==0)continue;
+     if(g.rightCap&&t+b!==2*columns-1)continue;
+    }
+   }
+   const delta=t-b;
+   const cost=st.cost+Math.abs(delta)*4+(free?Math.abs(top-bottom):0);
+   const old=next.get(delta);
+   if(!old||cost<old.cost)next.set(delta,{cost,top:t,bottom:b,path:[...st.path,[top,bottom]]});
   }
   states=next;
-  if(!states.size)break;
+  if(!states.size)return invalid('Impossibile mantenere le coppie frontali');
  }
- const solution=states.get(0);
- if(!solution)return {groups,columns,left,right,valid:false};
- groups.forEach((g,i)=>{g.top=solution.path[i][0];g.bottom=solution.path[i][1]});
- return {groups,columns,left,right,top:columns,bottom:columns,valid:true,cost:solution.cost};
+ const sol=states.get(0);
+ if(!sol||sol.top!==columns||sol.bottom!==columns)return invalid('I due lati non si chiudono correttamente');
+ groups.forEach((g,i)=>{g.top=sol.path[i][0];g.bottom=sol.path[i][1]});
+ return {groups,columns,left,right,valid:true,cost:sol.cost};
 }
 function geometryScoreForBlocks(blocks,it,capacity){
  const sorted=blocks.slice().sort((a,b)=>a.start-b.start);
@@ -1507,6 +1595,9 @@ function validateTableSegmentSwap(tableId,key1,key2){
   if(!Number.isFinite(sx)||!Number.isFinite(st)||!(sx+Number(x.people)===st||st+Number(target.people)===sx))
    return {error:'Vincolo di vicinanza: '+x.name+' e '+target.name+' devono rimanere uno accanto all’altro.'};
  }
+ const cap=table.base+(table.ends||[]).filter(v=>v==='seat').length;
+ const layout=geometryScoreForBlocks(order.filter(x=>x.kind==='booking').map(x=>({start:starts.get(x.b.id),end:starts.get(x.b.id)+x.people,b:x.b})),table,cap);
+ if(!layout.valid)return {error:'Scambio non consentito: non permette di mantenere le coppie di posti frontali e i capotavola configurati. '+(layout.reason||'')};
  return {starts,segments};
 }
 function showTableSegmentSwapDialog(tableId,sourceKey){
