@@ -229,6 +229,14 @@ body.ipad-mode{height:100dvh;overflow:hidden;background:#f8fbff}
    della finestra definita sotto, senza spostare la finestra dal centro. */
 .ipad-mode.ipad-table #ipadShade{display:block!important;pointer-events:auto!important;z-index:55!important}
 .ipad-mode.ipad-table #ipadShade.hidden{display:none!important}
+
+/* V25.53: mappa fisica a due lati; i confini sono a gradino. */
+.table .seatsegments.physical-seats{display:block!important;overflow:hidden!important;background:#e2e8f0!important}
+.table .physical-seats svg{width:100%;height:100%;display:block;overflow:hidden}
+.table .physical-seats .seat-physical-piece{cursor:pointer;stroke:#26374e;stroke-width:.7;vector-effect:non-scaling-stroke}
+.table .physical-seats .seat-physical-piece:focus{outline:none;stroke:#2563eb;stroke-width:2.5}
+.table .physical-seats .seat-physical-text{font-weight:750;fill:#17253b;text-anchor:middle;pointer-events:none;dominant-baseline:middle}
+.table .physical-seats .seat-physical-count{font-weight:700;fill:#17253b;text-anchor:middle;pointer-events:none;dominant-baseline:middle}
 </style><style>
 /* V25.10 — due viste per le proposte di cambio posto */
 #capacityModal .move-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 12px}#capacityModal .move-tabs button{flex:1 1 180px;min-height:44px;border:2px solid #cbd5e1;background:#f8fafc;color:#1e293b;font-weight:700;border-radius:9px}#capacityModal .move-tabs button.active{background:#fef08a;border-color:#eab308;color:#713f12}#capacityModal .move-table-section{padding:10px 12px;margin:12px 0;border:2px solid #fde047;border-radius:12px;background:#fffbeb}#capacityModal .move-table-section h3{margin:2px 0 10px;color:#854d0e}#capacityModal .move-table-section .choice{background:white}#capacityModal .dialog{width:min(780px,96vw)}
@@ -408,7 +416,7 @@ function compactMapSeatsAfterCalculation(){
     let start=-1;
     for(const g of gaps){
      const choices=[];
-     for(let pos=g.start;pos+n<=g.end;pos++)if(!frontSeatGeometryError(pos,n))choices.push(pos);
+     for(let pos=g.start;pos+n<=g.end;pos++)choices.push(pos);
      if(choices.length){start=fromRight?choices[choices.length-1]:choices[0];break}
     }
     if(start<0)return null;
@@ -426,6 +434,84 @@ function compactMapSeatsAfterCalculation(){
   candidates.sort((a,b)=>a.runs-b.runs||b.biggest-a.biggest||b.squares-a.squares||a.displacement-b.displacement);
   if(candidates.length){for(const b of movable){b.mapSeatStart=candidates[0].result.get(b.id);b.mapSeatTableId=it.id}}
  }
+}
+// V25.53: costruisce una vera rappresentazione di 2 file longitudinali.
+// Il numero di posti di ogni prenotazione viene ripartito fra i due lati;
+// un eventuale posto dispari produce un divisore a gradino (zigzag).
+// I capotavola, quando attivi, sono posti alle estremita' sinistra/destra.
+function physicalSeatLayout(slots,it){
+ const left=(it.ends||[])[0]==='seat',right=(it.ends||[])[1]==='seat';
+ const sideCap=Math.max(0,Number(it.base)||0),columns=Math.floor(sideCap/2);
+ const groups=slots.map(s=>({slot:s,people:s.people,top:0,bottom:0,leftCap:0,rightCap:0}));
+ if(!groups.length)return {groups,columns,left,right};
+ // Capotavola: appartengono alle porzioni agli estremi della tavolata.
+ if(left&&groups[0].people){groups[0].leftCap=1;groups[0].people--}
+ if(right){const last=groups[groups.length-1];if(last.people){last.rightCap=1;last.people--}}
+ // Ripartizione bilanciata: ciascun gruppo pari ha meta' sopra e meta' sotto,
+ // salvo i casi in cui un capotavola cambia la parita' della parte laterale.
+ // Per le porzioni dispari scegliamo il lato che riporta le due file in pari.
+ let imbalance=0;
+ for(const g of groups){
+  const half=Math.floor(g.people/2);
+  g.top=half;g.bottom=half;
+  if(g.people%2){if(imbalance>0){g.bottom++ ;imbalance--}else{g.top++;imbalance++}}
+ }
+ // Se un capotavola lascia un residuo, compensiamo scegliendo l'altro lato
+ // per una porzione dispari, senza mai cambiare il totale delle persone.
+ let top=groups.reduce((n,g)=>n+g.top,0),bottom=groups.reduce((n,g)=>n+g.bottom,0);
+ for(const g of groups){
+  if(top===columns&&bottom===columns)break;
+  if(top>columns&&g.top>g.bottom){g.top--;g.bottom++;top--;bottom++}
+  else if(bottom>columns&&g.bottom>g.top){g.bottom--;g.top++;bottom--;top++}
+ }
+ return {groups,columns,left,right,top,bottom};
+}
+function renderPhysicalSeatStrip(strip,it,slots,capacity){
+ strip.classList.add('physical-seats');
+ const layout=physicalSeatLayout(slots,it),{groups,columns}=layout;
+ if(!columns){strip.textContent='';return}
+ const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+ const W=1000,H=100,capWidth=layout.left||layout.right?24:0;
+ const margin=capWidth,unit=(W-2*margin)/columns;
+ svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.setAttribute('preserveAspectRatio','none');
+ svg.setAttribute('role','group');svg.setAttribute('aria-label','Posti ai due lati della tavolata');
+ let upper=0,lower=0;
+ const make=(tag,attrs,parent=svg)=>{const el=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))el.setAttribute(k,String(v));parent.append(el);return el};
+ groups.forEach((g,i)=>{
+  const slot=g.slot,b=slot.b,free=slot.kind==='free';
+  const xTop1=margin+upper*unit,xTop2=margin+(upper+g.top)*unit;
+  const xBottom1=margin+lower*unit,xBottom2=margin+(lower+g.bottom)*unit;
+  upper+=g.top;lower+=g.bottom;
+  // Il contorno segue prima il lato superiore e poi quello inferiore.
+  // I confini fra gruppi sono linee a gradino anziche' tagli verticali.
+  const points=[[xTop1,0],[xTop2,0],[xTop2,50],[xBottom2,50],[xBottom2,H],[xBottom1,H],[xBottom1,50],[xTop1,50]];
+  const fill=free?'#dcfce7':b.seated?'#fee2e2':'#ffedd5';
+  const poly=make('polygon',{points:points.map(p=>p.join(',')).join(' '),fill,class:'seat-physical-piece',tabindex:0,'aria-label':free?slot.people+' posti liberi':b.name+', '+slot.people+' persone'});
+  const activate=ev=>{ev.stopPropagation();if(free){openWalkinModal(it.id,slot.start,slot.people);return}selectedBooking=b.id;selected=it.id;draw();showBookingQuickCard(b.id)};
+  poly.addEventListener('pointerdown',ev=>ev.stopPropagation());
+  poly.addEventListener('pointerup',ev=>ev.stopPropagation());
+  poly.addEventListener('click',activate);
+  poly.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();activate(ev)}});
+  // Etichette centrate sul corpo della porzione, senza coprire i confini.
+  const cx=(xTop1+xTop2+xBottom1+xBottom2)/4;
+  const maxWidth=Math.max(g.top,g.bottom)*unit;
+  if(maxWidth>=28){
+   const font=Math.max(7,Math.min(14,maxWidth/Math.max(3,(free?6:b.name.length)*.62)));
+   const text=make('text',{x:cx,y:42,'font-size':font,class:'seat-physical-text'});
+   const name=free?'LIBERO':b.name;text.textContent=name.length>22?name.slice(0,21)+'…':name;
+   const count=make('text',{x:cx,y:67,'font-size':Math.min(13,font),class:'seat-physical-count'});
+   count.textContent=free?slot.people+' liberi':slot.people;
+   if(!free&&b.pinned){const lock=make('text',{x:cx,y:16,'font-size':13,class:'seat-physical-text'});lock.textContent='🔒'}
+  }
+  // Le estremita' sono cliccabili come la porzione a cui appartengono.
+  for(const [on,atLeft] of [[g.leftCap,true],[g.rightCap,false]])if(on){
+   const x=atLeft?0:W-margin;
+   const cap=make('rect',{x,y:15,width:margin,height:70,rx:3,fill,class:'seat-physical-piece',tabindex:0,'aria-label':free?'Capotavola libero':'Capotavola: '+b.name});
+   cap.addEventListener('pointerdown',ev=>ev.stopPropagation());cap.addEventListener('pointerup',ev=>ev.stopPropagation());cap.addEventListener('click',activate);
+   cap.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();activate(ev)}});
+  }
+ });
+ strip.append(svg);
 }
 function draw(){menus();const c=$('canvas');const savedScrollX=c.scrollLeft,savedScrollY=c.scrollTop;c.replaceChildren();const world=document.createElement('div');world.className='world';world.id='world';world.style.transform='scale('+zoom+')';world.style.width=Math.max(WORLD_W,Math.ceil(c.clientWidth/zoom))+'px';world.style.height=Math.max(WORLD_H,Math.ceil(c.clientHeight/zoom))+'px';const holder=document.createElement('div');const padding=mapPad(zoom),padX=padding.x,padY=padding.y;holder.style.width=Math.max(WORLD_W*zoom,c.clientWidth-padX)+'px';holder.style.height=Math.max(WORLD_H*zoom,c.clientHeight-padY)+'px';holder.style.paddingLeft=padX+'px';holder.style.paddingTop=padY+'px';holder.append(world);c.append(holder);$('zoomValue').value=Math.round(zoom*100);let nt=0,base=0,extra=0;for(const it of items()){const el=document.createElement('div');el.dataset.id=it.id;el.className=(it.kind==='table'?'table':'object '+(it.kind==='stage'?'stageobj':it.kind==='bathroom'?'bathroomobj':it.kind==='kitchen'?'kitchenobj':it.kind==='bar'?'barobj':''))+(it.id===selected?' selected':'')+(it.locked?' locked':'');if(it.kind==='table'){el.style.borderColor='#2563eb';el.title='Tavolata '+it.name+' · zona musica: '+musicLabel(it.musicZone)}el.style.left=it.x+'px';el.style.top=it.y+'px';el.style.width=it.w+'px';el.style.height=it.h+'px';el.style.transform='rotate('+clamp(it.angle??(it.orientation==='vertical'?90:0),-180,180)+'deg)';el.style.transformOrigin='center center';if(it.kind==='table'){nt++;base+=it.base;extra+=(it.ends||[]).filter(v=>v==='seat').length;const capacity=it.base+(it.ends||[]).filter(v=>v==='seat').length;
 const tableBookings=bookings().filter(b=>b.tableId===it.id&&(b.status==='active'||b.status==='done'));
@@ -477,31 +563,9 @@ for(const p of placed){
  cursor=p.end;
 }
 if(cursor<capacity)visibleSlots.push({kind:'free',people:capacity-cursor,start:cursor});
-for(const slot of visibleSlots){
- const b=slot.b;
- const isFree=slot.kind==='free';
- const segment=document.createElement('div');
- segment.className='seatseg '+(isFree?'v22-free':b.seated?'v22-seated':'v22-waiting')+(!isFree&&b.id===selectedBooking?' focusbooking':'');
- segment.style.flex='0 0 '+(100*slot.people/capacity)+'%';
- segment.title=isFree?'Posti liberi ('+slot.people+') · Tocca per inserire un cliente senza prenotazione':b.name+' — '+slot.people+' persone';
- if(!isFree){const geo=frontSeatGeometryError(b.mapSeatStart,slot.people);if(geo){segment.style.outline='3px dashed #dc2626';segment.style.outlineOffset='-3px';segment.title+=' ⚠️ '+geo}}
- const n=document.createElement('span');n.className='segname';n.textContent=isFree?'LIBERO':b.name;
- if(!isFree&&b.pinned){const lock=document.createElement('span');lock.className='mapBookingLock';lock.textContent='🔒';lock.title='Prenotazione bloccata';segment.append(lock)}
- const q=document.createElement('span');q.className='segcount';q.textContent=isFree?slot.people+' liberi':slot.people;
- segment.append(n,q);
- const segWidth=it.w*slot.people/capacity;
- segment.style.fontSize=Math.max(7,Math.min(15,segWidth/Math.max(6,(isFree?'LIBERO':b.name).length*.65)))+'px';
- segment.addEventListener('pointerdown',ev=>ev.stopPropagation());
- segment.addEventListener('pointerup',ev=>ev.stopPropagation());
- segment.addEventListener('pointercancel',ev=>ev.stopPropagation());
- // Su iPad il click sintetico può perdersi se il contenitore intercetta i pointer events.
- let touched=false;
- const activateSegment=ev=>{ev.stopPropagation();if(isFree){openWalkinModal(it.id,slot.start,slot.people);return}selectedBooking=b.id;selected=it.id;draw();showBookingQuickCard(b.id)};
- segment.addEventListener('pointerup',ev=>{if(ev.pointerType==='touch'&&ev.isPrimary){touched=true;activateSegment(ev);setTimeout(()=>{touched=false},450)}});
- segment.addEventListener('click',ev=>{ev.stopPropagation();if(!touched)activateSegment(ev)});
- segment.addEventListener('contextmenu',ev=>{ev.preventDefault();ev.stopPropagation();selected=it.id;selectedBooking=null;setCreationOpen(true);draw();if(document.body.classList.contains('ipad-mode'))ipadOpen('table');else $('editor').scrollIntoView({behavior:'smooth',block:'nearest'})});
- strip.append(segment);
-}
+// V25.53: rappresentazione fisica sui due lati, con confini a gradino.
+// Le porzioni SVG sono cliccabili anche dove il confine e' sfalsato.
+renderPhysicalSeatStrip(strip,it,visibleSlots,capacity);
 if(slotChanged)save();
 el.append(strip);
 if(it.locked){const badge=document.createElement('span');badge.className='tableLockBadge';badge.textContent='🔒';badge.title=it.locked?'Tavolata bloccata':'Prenotazione bloccata su questa tavolata';badge.setAttribute('aria-label','Tavolata bloccata');el.append(badge)}
@@ -1174,7 +1238,7 @@ function showOptimization(){const plan=optimizePlan();pendingOptimization=plan;c
  if(overfullProposed.length){const err=document.createElement('p');err.style.cssText='color:#991b1b;font-weight:800;background:#fee2e2;padding:12px;border:2px solid #dc2626;border-radius:8px';err.textContent='⛔ OTTIMIZZAZIONE BLOCCATA: capienza superata nella proposta: '+overfullProposed.map(t=>'tavolo '+t.name+' ('+projectedCounts.get(t.id)+'/'+t.cap+')').join(', ')+'. Nessuna modifica sarà applicata.';box.append(err)}
  const invalidExisting=plan.active.filter(b=>{const tid=plan.removals.has(b.id)?null:(plan.moves.get(b.id)||b.tableId||plan.assignments.get(b.id));return tid&&musicConstraint(b)&&allTables().find(t=>t.item.id===tid)?.item.musicZone!==musicConstraint(b)});
  if(invalidExisting.length){const err=document.createElement('p');err.style.cssText='color:#991b1b;font-weight:700;background:#fee2e2;padding:10px;border-radius:8px';err.textContent='⛔ Assegnazioni già presenti che violano vincoli obbligatori: '+invalidExisting.map(b=>b.name).join(', ')+'. Correggile prima della conferma.';box.append(err)}
- const actions=document.createElement('div');actions.className='row';actions.style.marginTop='12px';const apply=document.createElement('button');apply.className='primary';apply.textContent='✓ Conferma '+plan.assignments.size+' assegnazioni, '+plan.moves.size+' spostamenti e '+plan.removals.size+' liberazioni';apply.disabled=!(plan.assignments.size||plan.moves.size||plan.removals.size)||invalidExisting.length>0||overfullProposed.length>0;apply.onclick=()=>{if(pendingOptimization!==plan)return;if(!confirm('Confermi '+plan.assignments.size+' nuove assegnazioni e '+plan.moves.size+' spostamenti proposti? Le prenotazioni bloccate o sedute non saranno spostate.'))return;for(const b of bookings()){if(b.status!=='active')continue;if(plan.removals.has(b.id)&&!b.pinned&&!b.seated)b.tableId=null;else if(plan.moves.has(b.id)&&!b.pinned&&!b.seated)b.tableId=plan.moves.get(b.id);else if(plan.assignments.has(b.id)&&!b.tableId)b.tableId=plan.assignments.get(b.id)}compactMapSeatsAfterCalculation();const geometryWarnings=allTables().flatMap(t=>tableFrontGeometryWarnings(t.item.id));if(geometryWarnings.length)alert('⚠️ Alcune posizioni già esistenti non rispettano la disposizione frontale e non sono state spostate automaticamente:\n'+geometryWarnings.slice(0,12).map(x=>'• '+x.b.name+': '+x.error).join('\n'));pendingOptimization=null;box.classList.add('hidden');selectedBooking=null;selected=null;save();draw();notice('Assegnazioni confermate. Puoi annullare con CTRL+Z.')};const cancel=document.createElement('button');cancel.textContent='Annulla anteprima';cancel.onclick=()=>{pendingOptimization=null;box.classList.add('hidden')};actions.append(apply,cancel);box.append(actions);box.scrollIntoView({behavior:'smooth',block:'nearest'});
+ const actions=document.createElement('div');actions.className='row';actions.style.marginTop='12px';const apply=document.createElement('button');apply.className='primary';apply.textContent='✓ Conferma '+plan.assignments.size+' assegnazioni, '+plan.moves.size+' spostamenti e '+plan.removals.size+' liberazioni';apply.disabled=!(plan.assignments.size||plan.moves.size||plan.removals.size)||invalidExisting.length>0||overfullProposed.length>0;apply.onclick=()=>{if(pendingOptimization!==plan)return;if(!confirm('Confermi '+plan.assignments.size+' nuove assegnazioni e '+plan.moves.size+' spostamenti proposti? Le prenotazioni bloccate o sedute non saranno spostate.'))return;for(const b of bookings()){if(b.status!=='active')continue;if(plan.removals.has(b.id)&&!b.pinned&&!b.seated)b.tableId=null;else if(plan.moves.has(b.id)&&!b.pinned&&!b.seated)b.tableId=plan.moves.get(b.id);else if(plan.assignments.has(b.id)&&!b.tableId)b.tableId=plan.assignments.get(b.id)}compactMapSeatsAfterCalculation();pendingOptimization=null;box.classList.add('hidden');selectedBooking=null;selected=null;save();draw();notice('Assegnazioni confermate. Puoi annullare con CTRL+Z.')};const cancel=document.createElement('button');cancel.textContent='Annulla anteprima';cancel.onclick=()=>{pendingOptimization=null;box.classList.add('hidden')};actions.append(apply,cancel);box.append(actions);box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 $('optimize').onclick=showOptimization;
 
@@ -1246,7 +1310,7 @@ function showRecalculation(){
  apply.disabled=!better||!plan.changes.length||plan.problems.some(x=>x.startsWith('⛔')&&/bloccate su tavolate diverse|non ha capienza|non rispetta la zona/.test(x));
  apply.onclick=()=>{if(!confirm('Applicare il ricalcolo? Le modifiche saranno annullabili con CTRL+Z.'))return;
   for(const b of bookings())if(b.status==='active'&&plan.active.some(x=>x.id===b.id))b.tableId=plan.assignments.get(b.id)||null;
-  compactMapSeatsAfterCalculation();const geometryWarnings=allTables().flatMap(t=>tableFrontGeometryWarnings(t.item.id));if(geometryWarnings.length)alert('⚠️ Posizioni esistenti non allineate (non spostate automaticamente):\n'+geometryWarnings.slice(0,12).map(x=>'• '+x.b.name+': '+x.error).join('\n'));selectedBooking=null;selected=null;save();draw();box.classList.add('hidden');notice('Ricalcolo applicato. CTRL+Z per annullare.')};
+  compactMapSeatsAfterCalculation();selectedBooking=null;selected=null;save();draw();box.classList.add('hidden');notice('Ricalcolo applicato. CTRL+Z per annullare.')};
  const cancel=document.createElement('button');cancel.textContent='Annulla';cancel.onclick=()=>box.classList.add('hidden');actions.append(apply,cancel);box.append(actions);box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 $('recalculate').onclick=showRecalculation;
@@ -1299,7 +1363,7 @@ $('walkinForm').addEventListener('submit',e=>{
  if(!name){$('walkinError').textContent='Inserisci il nome del cliente.';return}
  if(!Number.isInteger(people)||people<1||people>available){$('walkinError').textContent='Inserisci da 1 a '+available+' persone.';return}
  const b={id:uid(),name,people,comment:'',status:'active',tableId,seated:true,pinned:false};
- if(Number.isFinite(walkinSlotStart)){const geo=frontSeatGeometryError(walkinSlotStart,Number(b.people));if(geo){alert('⛔ Posizione non consentita\n\n'+geo+'\nScegli un’altra porzione libera.');return}b.mapSeatStart=walkinSlotStart;b.mapSeatTableId=tableId;}
+ if(Number.isFinite(walkinSlotStart)){b.mapSeatStart=walkinSlotStart;b.mapSeatTableId=tableId;}
  bookings().push(b);selectedBooking=null;selected=null;save();closeWalkinModal();draw();notice(name+' · '+people+' persone inserite al tavolo '+t.item.name);
 });
 // V25.50 — Scambio dell'ordine fisico delle prenotazioni nella stessa tavolata.
@@ -1338,8 +1402,7 @@ function validateTableSegmentSwap(tableId,key1,key2){
  for(const seg of order){if(seg.kind==='booking')starts.set(seg.b.id,cursor);cursor+=seg.people}
  for(const seg of segments){
   if(seg.kind==='booking'){
-   const err=frontSeatGeometryError(starts.get(seg.b.id),seg.people);
-   if(err)return {error:'Disposizione frontale non rispettata per '+seg.b.name+': '+err+' Prova un altro scambio o sposta anche un blocco di posti liberi.'};
+
   }
  }
  for(const seg of segments){
